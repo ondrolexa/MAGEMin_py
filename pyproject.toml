@@ -19,6 +19,12 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Physics",
 ]
 
+[project.urls]
+Homepage = "https://github.com/ondrolexa/MAGEMin_py"
+Repository = "https://github.com/ondrolexa/MAGEMin_py"
+Issues = "https://github.com/ondrolexa/MAGEMin_py/issues"
+Changelog = "https://github.com/ondrolexa/MAGEMin_py/blob/main/CHANGELOG.md"
+
 [project.optional-dependencies]
 plot = ["matplotlib>=3.8"]
 mesh = ["numpy>=1.26", "scipy>=1.11"]
