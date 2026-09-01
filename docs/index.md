@@ -90,6 +90,7 @@ worked example end to end.
 | `mp`, `mpe` | Metapelite (White et al. 2014) / extended |
 | `mb`, `mbe` | Metabasite (Green et al. 2016) / extended |
 | `um`, `ume` | Ultramafic (Evans & Frost 2021) / extended |
+| `all` | All (union of mp/mb/mbe/ig/igd/igad/um/ume/mpe) + DEW aqueous-fluid model |
 | `mtl` | Mantle (Holland et al. 2013) |
 | `sb11`, `sb21`, `sb24` | Stixrude & Lithgow-Bertelloni (2011/2021/2024) |
 

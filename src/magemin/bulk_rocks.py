@@ -66,6 +66,44 @@ FPWM_PELITE_MP = BulkRock(
     values=(70.999, 12.8065, 0.771, 3.978, 6.342, 2.7895, 1.481, 0.758, 0.72933, 0.075, 30.0),
 )
 
+FPWM_PELITE_ALL = BulkRock(
+    name="FPWorldMedian pelite",
+    database="all",
+    reference="Forshaw & Pattison (2023); Cr2O3 trace value from get_bulk_igneous",
+    oxides=(
+        "SiO2",
+        "Al2O3",
+        "CaO",
+        "MgO",
+        "FeO",
+        "K2O",
+        "Na2O",
+        "TiO2",
+        "O",
+        "MnO",
+        "Cr2O3",
+        "H2O",
+        "CO2",
+        "S",
+    ),
+    values=(
+        70.999,
+        12.8065,
+        0.771,
+        3.978,
+        6.342,
+        2.7895,
+        1.481,
+        0.758,
+        0.72933,
+        0.075,
+        0.109,
+        30.0,
+        5.0,
+        0.2,
+    ),
+)
+
 SM89_MORB_MB = BulkRock(
     name="SM89 oxidised average MORB",
     database="mb",
@@ -126,6 +164,7 @@ BASALT_GH = BulkRock(
 BULK_ROCKS_BY_DATABASE: dict[str, tuple[BulkRock, ...]] = {
     "ig": (KLB1_IG, RE46_IG, NMORB_IG),
     "mp": (FPWM_PELITE_MP,),
+    "all": (FPWM_PELITE_ALL,),
     "mb": (SM89_MORB_MB,),
     "um": (SERPENTINE_UM,),
     "mtl": (KLB1_MTL,),

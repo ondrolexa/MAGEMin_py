@@ -162,9 +162,9 @@ temperature range but only at the lowest pressures shown, up to about 9.4 kbar.
 ## 6. Validating the pseudosection
 
 [`PhaseDiagram.validate()`][magemin.diagrams.PhaseDiagram.validate] checks the same `diagram`
-computed in step 4 for legitimate [Schreinemakers](https://en.wikipedia.org/wiki/Schreinemaker%27s_analysis)
-boundaries: every pair of nearby resolved cells with different assemblages must differ by exactly
-one phase (an ordinary univariant crossing) or by a polymorph swap (e.g. kyanite/sillimanite).
+computed in step 4 for legitimate zero-phase-fraction field boundaries: every pair of nearby
+resolved cells with different assemblages must differ by exactly one phase (the Gibbs-phase-rule
+variance changing by one) or by a polymorph swap (e.g. kyanite/sillimanite).
 "Nearby" bridges one shared unresolved buffer cell, since a real boundary between two resolved
 fields almost always still has one straddling it at this resolution:
 

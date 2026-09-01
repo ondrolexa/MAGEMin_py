@@ -934,8 +934,8 @@ class PhaseDiagram:
         phase (an ordinary zero-mode univariant crossing) or by one phase on each side that are
         polymorphs of each other (e.g. `ky`/`sill`). Cells sharing the same assemblage are
         skipped rather than checked -- this validates mesh structure only where the mesh
-        actually reached a decision on both sides, not full Schreinemakers rigor (no
-        invariant-point/angular-ordering analysis).
+        actually reached a decision on both sides, not full invariant-point analysis (no
+        angular-ordering check across three or more meeting fields).
 
         Returns:
             Whether every such nearby resolved pair is a clean boundary or a polymorph swap.

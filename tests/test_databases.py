@@ -1,4 +1,4 @@
-"""Tests for sb database family support, and gh/MELTS's deliberate deactivation."""
+"""Tests for sb/"all" database support, and gh/MELTS's deliberate deactivation."""
 
 import pytest
 
@@ -10,6 +10,13 @@ def test_sb11_database_computes(require_library: None) -> None:
     """The 'sb' (Stixrude & Lithgow-Bertelloni) database family is reachable."""
     with MAGEMin("sb11") as mg:
         result = mg.compute(P=10, T=800, bulk=bulk_rocks.KLB1_SB)
+        assert result.status == 0
+
+
+def test_all_database_computes(require_library: None) -> None:
+    """The 'all' database (union of mp/mb/mbe/ig/igd/igad/um/ume/mpe, incl. DEW) is reachable."""
+    with MAGEMin("all") as mg:
+        result = mg.compute(P=10, T=800, bulk=bulk_rocks.FPWM_PELITE_ALL)
         assert result.status == 0
 
 

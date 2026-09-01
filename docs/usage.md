@@ -287,10 +287,11 @@ for `plot_grid()`.
 ## Validating a diagram
 
 [`PhaseDiagram.validate()`][magemin.diagrams.PhaseDiagram.validate] checks that every pair of
-*nearby* resolved cells with different stable-phase assemblages forms a legitimate
-[Schreinemakers](https://en.wikipedia.org/wiki/Schreinemaker%27s_analysis) boundary: either a
-clean univariant crossing (the assemblages differ by exactly one phase) or a polymorph swap (the
-one differing phase on each side is a polymorph of the other, e.g. `and`/`sill`). "Nearby" means
+*nearby* resolved cells with different stable-phase assemblages forms a legitimate field
+boundary: a true field boundary is a zero-phase-fraction line, so crossing it must change the
+Gibbs-phase-rule variance by exactly one (the assemblages differ by exactly one phase) -- or, for
+a polymorph swap, leave the phase count/variance unchanged because the one differing phase on
+each side is a polymorph of the other (e.g. `and`/`sill`). "Nearby" means
 directly adjacent, or adjacent through exactly one shared unresolved buffer cell -- a real
 boundary between two different resolved fields almost always leaves at least one still-unresolved
 cell straddling it, so bridging one such cell is what lets this reach the diagram's real
@@ -302,7 +303,8 @@ diagram.validate()  # True or False
 ```
 
 This checks mesh structure only where the mesh actually reached a decision on both sides of a
-boundary -- it is not full Schreinemakers rigor (no invariant-point/angular-ordering analysis).
+boundary -- it is not full invariant-point analysis (no angular-ordering check across three or
+more meeting fields).
 `False` commonly just means the mesh needs deeper refinement to pull nearby reactions apart:
 [`PhaseDiagram.refine()`][magemin.diagrams.PhaseDiagram.refine] returns a new, more deeply refined
 diagram, reusing every already-computed point -- only the genuinely new, deeper corners get

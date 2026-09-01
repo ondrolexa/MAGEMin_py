@@ -369,11 +369,11 @@ def interpolate_bulk(
 # Groups of phase abbreviations that are polymorphs of one another (same composition, different
 # structure) across the datasets this project wires up (see MAGEMin/README.md's per-dataset
 # phase lists): swapping between members of one of these groups is a genuine, clean
-# Schreinemakers reaction (e.g. `and = sill`) even though it doesn't fit the plain "one assemblage
-# is the other plus one phase" pattern -- the phase count doesn't change, one polymorph simply
-# replaces another. `"q"`/`"qtz"` are both included since the abbreviation differs between the
-# Holland/White/Green-family datasets (`"q"`) and the Stixrude & Lithgow-Bertelloni mantle dataset
-# (`"qtz"`).
+# zero-phase-fraction boundary (a polymorph reaction, e.g. `and = sill`) even though it doesn't
+# fit the plain "one assemblage is the other plus one phase" pattern -- the phase count doesn't
+# change, one polymorph simply replaces another. `"q"`/`"qtz"` are both included since the
+# abbreviation differs between the Holland/White/Green-family datasets (`"q"`) and the Stixrude &
+# Lithgow-Bertelloni mantle dataset (`"qtz"`).
 _POLYMORPH_GROUPS: tuple[frozenset[str], ...] = (
     frozenset({"ky", "sill", "and"}),  # Al2SiO5: kyanite, sillimanite, andalusite
     frozenset({"q", "qtz", "crst", "trd", "coe", "stv"}),  # SiO2: quartz, cristobalite,
