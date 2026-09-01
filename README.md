@@ -6,16 +6,18 @@ mineral assemblage for a given bulk-rock composition and pressure/temperature co
 
 ## Relation to MAGEMin / MAGEMin_C.jl
 
-This repository vendors a copy of the upstream `MAGEMin` C library (`MAGEMin/`) and its Julia
-bindings (`MAGEMin_C.jl/`) for reference. `magemin` wraps `MAGEMin`'s own official minimal C API
-(`MAGEMin_api.h`) via [`ctypes`](https://docs.python.org/3/library/ctypes.html) -- a small, stable
-5-function surface (`MAGEMin_Init`, `MAGEMin_NOxides`, `MAGEMin_OxideNames`,
-`MAGEMin_ComputeEquilibrium`, `MAGEMin_Free`) intended by upstream for external C/C++ callers.
-`magemin_ext/` adds a small companion C extension on top of it (buffer/activity fixing, phase
-suppression, `sb`/`gh` database support, phase-name discovery) by calling MAGEMin's existing
-internal functions through its unmodified headers -- nothing under `MAGEMin/` is ever edited, so a
-future MAGEMin update just drops in a fresh copy and rebuilds. See [Scope and
-limitations](#scope-and-limitations) for what's still out of scope.
+`magemin` wraps `MAGEMin`'s own official minimal C API (`MAGEMin_api.h`) via
+[`ctypes`](https://docs.python.org/3/library/ctypes.html) -- a small, stable 5-function surface
+(`MAGEMin_Init`, `MAGEMin_NOxides`, `MAGEMin_OxideNames`, `MAGEMin_ComputeEquilibrium`,
+`MAGEMin_Free`) intended by upstream for external C/C++ callers. `magemin_ext/` adds a small
+companion C extension on top of it (buffer/activity fixing, phase suppression, `sb`/`gh` database
+support, phase-name discovery) by calling MAGEMin's existing internal functions through its
+unmodified headers -- MAGEMin's own source is never edited, so a new MAGEMin release can just be
+downloaded and rebuilt (see [Installation](#installation)) without touching anything here.
+[`MAGEMin_C.jl`](https://github.com/ComputationalThermodynamics/MAGEMin_C.jl), the upstream Julia
+bindings, is used only as a development-time reference for API shape and behavior, not part of
+this repository. See [Scope and limitations](#scope-and-limitations) for what's still out of
+scope.
 
 ## Installation
 
@@ -35,16 +37,17 @@ On Debian/Ubuntu:
 sudo apt install liblapacke-dev libnlopt-dev
 ```
 
-Then build the library:
+Then download and build MAGEMin:
 
 ```sh
-./scripts/build_lib.sh
+uv run magemin-install
 ```
 
-This runs `make lib` inside `MAGEMin/` (with `USE_MPI=0`, since neither the API nor this package's
-parallelism needs MPI), compiles the `magemin_ext/` companion extension, and links everything into
-one `MAGEMin/libMAGEMin.so`. The vendored source location defaults to `./MAGEMin` and can be
-overridden with `MAGEMIN_SRC_DIR`; nothing under it is ever modified by this build.
+This downloads a MAGEMin source release from GitHub, builds it (`make lib`, with `USE_MPI=0`,
+since neither the API nor this package's parallelism needs MPI) together with the `magemin_ext/`
+companion extension, and caches the result in a per-user cache directory (Linux/macOS/Windows --
+see `docs/installation.md` for version pinning, custom compiler/flag options, and Windows/MSYS2
+notes).
 
 If your compiled library lives elsewhere, point `magemin` at it with:
 
@@ -52,13 +55,9 @@ If your compiled library lives elsewhere, point `magemin` at it with:
 export MAGEMIN_LIB_PATH=/path/to/libMAGEMin.so
 ```
 
-Don't have a vendored `MAGEMin/` tree? `magemin-install` downloads and builds one automatically
-(Linux/macOS/Windows -- see `docs/installation.md` for version pinning, custom compiler/flag
-options, and Windows/MSYS2 notes):
-
-```sh
-uv run magemin-install
-```
+Already have a MAGEMin source tree checked out locally and just want to build it in place?
+`./scripts/build_lib.sh` does that instead (`MAGEMIN_SRC_DIR` selects the source directory,
+default `./MAGEMin`).
 
 Want `PhaseDiagram.plot()`? Install the optional `plot` extra:
 
@@ -167,8 +166,8 @@ uv run ruff check .
 uv run ruff format .
 ```
 
-Most tests require the compiled library (`./scripts/build_lib.sh`) and are skipped gracefully if
-it isn't built.
+Most tests require the compiled library (`uv run magemin-install`, or `./scripts/build_lib.sh` if
+you have a MAGEMin source tree checked out locally) and are skipped gracefully if it isn't built.
 
 ### Documentation site
 
@@ -198,6 +197,17 @@ does **not** support (all of which `MAGEMin_C.jl` does, via its much larger inte
 
 If you need any of these, see [`MAGEMin_C.jl`](https://github.com/ComputationalThermodynamics/MAGEMin_C.jl).
 
+## Credits
+
+All thermodynamic modeling is done by [`MAGEMin`](https://github.com/ComputationalThermodynamics/MAGEMin)
+itself; this package only adds a Python interface around it. `MAGEMin` is developed by Nicolas
+Riel and Boris Kaus (Johannes Gutenberg University Mainz), with Erik C. R. Green and Nathan
+Berlie. If you use `magemin` in published work, please cite the original `MAGEMin` paper:
+
+> Riel N., Kaus B.J.P., Green E.C.R., Berlie N. (2022). MAGEMin, an Efficient Gibbs Energy
+> Minimizer: Application to Igneous Systems. *Geochemistry, Geophysics, Geosystems* 23,
+> e2022GC010427. [doi:10.1029/2022GC010427](https://doi.org/10.1029/2022GC010427)
+
 ## License
 
-GPLv3, matching the vendored `MAGEMin` C library this package wraps. See `LICENSE`.
+GPLv3, matching the `MAGEMin` C library this package wraps. See `LICENSE`.

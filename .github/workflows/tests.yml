@@ -9,13 +9,13 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
 
       - name: Install system dependencies
         run: sudo apt-get update && sudo apt-get install -y liblapacke-dev libnlopt-dev
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.14"
           enable-cache: true
@@ -23,8 +23,10 @@ jobs:
       - name: Install Python dependencies
         run: uv sync --group dev
 
-      - name: Build MAGEMin library
-        run: ./scripts/build_lib.sh
+      - name: Download and build MAGEMin library
+        # The vendored MAGEMin/ source tree is local-only (not pushed to GitHub), so CI
+        # downloads+builds a release via magemin-install instead of ./scripts/build_lib.sh.
+        run: uv run magemin-install
 
       - name: Lint
         run: |
@@ -37,10 +39,10 @@ jobs:
   docs:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.14"
           enable-cache: true
