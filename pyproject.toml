@@ -1,0 +1,47 @@
+[project]
+name = "magemin"
+version = "0.1.1"
+description = "Python interface to MAGEMin, a C package that performs Gibbs energy minimization for thermodynamic equilibrium calculations."
+readme = "README.md"
+license = "GPL-3.0-or-later"
+authors = [
+    { name = "Ondrej Lexa", email = "lexa.ondrej@gmail.com" }
+]
+requires-python = ">=3.14"
+dependencies = []
+
+[project.optional-dependencies]
+plot = ["matplotlib>=3.8"]
+mesh = ["numpy>=1.26", "scipy>=1.11"]
+
+[project.scripts]
+magemin-install = "magemin._download:main"
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff>=0.6", "magemin[plot,mesh]"]
+docs = [
+    "mkdocs>=1.6.1",
+    "mkdocs-material>=9.7.7",
+    "mkdocstrings[python]>=1.0.6",
+]
+
+[build-system]
+requires = ["uv_build>=0.11.15,<0.12.0"]
+build-backend = "uv_build"
+
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "D"]
+ignore = ["D203", "D213"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["D"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

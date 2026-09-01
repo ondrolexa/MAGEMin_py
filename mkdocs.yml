@@ -1,0 +1,63 @@
+site_name: magemin
+site_description: Python interface to MAGEMin, a C package for Gibbs energy minimization.
+repo_name: magemin
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - toc.follow
+
+nav:
+  - Home: index.md
+  - Installation: installation.md
+  - Usage: usage.md
+  - Tutorial: tutorial_pseudosection.md
+  - API Reference:
+      - MAGEMin / Point / multi_point_minimization: api/core.md
+      - Phase diagrams: api/diagrams.md
+      - Delaunay-mesh pseudosections: api/pseudosection.md
+      - Results: api/results.md
+      - Predefined bulk rocks: api/bulk_rocks.md
+      - Solvus disambiguation: api/solvus.md
+      - Downloading MAGEMin: api/download.md
+      - Errors: api/errors.md
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            docstring_style: google
+            show_source: false
+            show_root_heading: true
+            show_root_full_path: false
+            merge_init_into_class: true
+            separate_signature: true
+            show_signature_annotations: true
+            members_order: source
+            docstring_section_style: table
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight
+  - tables
+  - toc:
+      permalink: true
