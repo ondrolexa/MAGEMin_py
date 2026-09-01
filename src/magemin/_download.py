@@ -341,8 +341,7 @@ def build(
     libs = libs if libs is not None else _LIBS_DEFAULTS.get(system, "")
     ext = _LIB_EXT_BY_SYSTEM.get(system, "so")
 
-    repo_root = Path(__file__).resolve().parents[2]
-    magemin_ext_dir = repo_root / "magemin_ext"
+    magemin_ext_dir = Path(__file__).resolve().parent / "magemin_ext"
     ext_c = magemin_ext_dir / "magemin_ext.c"
     ext_o = magemin_ext_dir / "magemin_ext.o"
 
@@ -377,7 +376,7 @@ def build(
     if inc:
         compile_cmd += shlex.split(inc)
     _log("Compiling magemin_ext.c...", verbose=verbose)
-    _run(compile_cmd, cwd=repo_root, verbose=verbose)
+    _run(compile_cmd, cwd=magemin_ext_dir, verbose=verbose)
 
     objects = sorted(str(p) for p in (src_dir / "src").rglob("*.o"))
     out = src_dir / f"libMAGEMin.{ext}"
@@ -388,7 +387,7 @@ def build(
         link_cmd += shlex.split(libs)
     link_cmd += ["-flto"]
     _log(f"Linking {out.name} from {len(objects)} object files...", verbose=verbose)
-    _run(link_cmd, cwd=repo_root, verbose=verbose)
+    _run(link_cmd, cwd=magemin_ext_dir, verbose=verbose)
 
     _log(f"Built library at {out}", verbose=verbose)
     return out

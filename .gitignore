@@ -20,21 +20,5 @@ uv.lock
 # Built docs site
 /site/
 
-# Reference-only vendored trees (see CLAUDE.md's "Repo layout") -- not part of this
-# project's own source, not needed to build/test, and will be deleted before release.
-# Unlike MAGEMin/ (vendored but tracked, since we do commit updates to it), these are
-# never tracked in git at all.
-/MAGEMin_C.jl/
-/MAGEMinApp.jl/
-
-# Build artifacts from scripts/build_lib.sh. MAGEMin/'s own .gitignore covers most of
-# MAGEMin/'s build output, but not reliably across vendored versions (a released version
-# has been observed to drop its *.o.tmp/libMAGEMin.so entries present in an earlier
-# snapshot) -- listed explicitly here too so a rebuild never becomes accidentally
-# committable regardless of what the vendored .gitignore currently contains.
-/magemin_ext/*.o
-MAGEMin/libMAGEMin.so
-MAGEMin/libMAGEMin.dylib
-MAGEMin/libMAGEMin.dll
-MAGEMin/src/**/*.o
-MAGEMin/src/**/*.o.tmp
+# Build artifacts from scripts/build_lib.sh.
+/src/magemin/magemin_ext/*.o

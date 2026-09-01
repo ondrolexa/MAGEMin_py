@@ -22,7 +22,8 @@ scope.
 ## Installation
 
 ```sh
-uv sync
+pip install magemin
+# or: uv add magemin
 ```
 
 Building the C library additionally requires:
@@ -40,7 +41,7 @@ sudo apt install liblapacke-dev libnlopt-dev
 Then download and build MAGEMin:
 
 ```sh
-uv run magemin-install
+magemin-install
 ```
 
 This downloads a MAGEMin source release from GitHub, builds it (`make lib`, with `USE_MPI=0`,
@@ -149,6 +150,8 @@ result = mg.compute(P=8, T=800, bulk=bulk_rocks.KLB1_IG, light=True)
 `MAGEMin(database)` infers the research group (`tc`/`sb`) from the acronym automatically.
 
 ## Development
+
+Clone this repo, then:
 
 ```sh
 uv sync --group dev

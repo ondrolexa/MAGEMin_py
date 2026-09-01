@@ -29,9 +29,9 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
     inc="-I/opt/homebrew/include"
 fi
 
-"$cc" $ccflags -c "$repo_root/magemin_ext/magemin_ext.c" \
-    -I"$magemin_src/src" -I"$repo_root/magemin_ext" \
-    -o "$repo_root/magemin_ext/magemin_ext.o" $inc
+"$cc" $ccflags -c "$repo_root/src/magemin/magemin_ext/magemin_ext.c" \
+    -I"$magemin_src/src" -I"$repo_root/src/magemin/magemin_ext" \
+    -o "$repo_root/src/magemin/magemin_ext/magemin_ext.o" $inc
 
 vendored_objects=$(find "$magemin_src/src" -name '*.o')
 
@@ -44,7 +44,7 @@ else
 fi
 
 "$cc" -shared -fPIC -pthread -o "$out" \
-    $vendored_objects "$repo_root/magemin_ext/magemin_ext.o" \
+    $vendored_objects "$repo_root/src/magemin/magemin_ext/magemin_ext.o" \
     $inc $libs -flto
 
 echo "Built: $out"

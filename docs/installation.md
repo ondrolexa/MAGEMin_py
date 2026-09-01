@@ -3,12 +3,13 @@
 ## Python package
 
 ```sh
-uv sync
+pip install magemin
+# or: uv add magemin
 ```
 
-## Compiling the C library
+## Downloading and building MAGEMin
 
-Building the vendored C library additionally requires:
+Building the C library requires:
 
 - A C compiler (e.g. `gcc` or `clang`)
 - `liblapacke-dev`
@@ -20,30 +21,10 @@ On Debian/Ubuntu:
 sudo apt install liblapacke-dev libnlopt-dev
 ```
 
-Then build the library:
+Then:
 
 ```sh
-./scripts/build_lib.sh
-```
-
-This runs `make lib` inside `MAGEMin/` (with `USE_MPI=0`, since neither the API nor this package's
-parallelism needs MPI), then compiles the `magemin_ext/` companion extension (which adds
-buffer/activity fixing, phase suppression, sb/gh database support, and phase-name discovery on top
-of MAGEMin's own internal functions -- see `magemin_ext/magemin_ext.h` for its C-level contract) and
-links it together with MAGEMin's object files into one `MAGEMin/libMAGEMin.so`. If your system's
-`cc`/`clang` isn't available, set `CC=gcc ./scripts/build_lib.sh` (or any other compiler).
-
-The vendored source location defaults to `./MAGEMin` and can be overridden with `MAGEMIN_SRC_DIR`
-(e.g. `MAGEMIN_SRC_DIR=/path/to/MAGEMin ./scripts/build_lib.sh`) -- nothing under it is ever modified
-by this build, which keeps it safe to point at a separately managed/updated copy.
-
-## Downloading and building automatically
-
-If you don't have (or don't want to use) the vendored `MAGEMin/` tree, `magemin-install` downloads
-a MAGEMin source release from GitHub and builds it, in one step:
-
-```sh
-uv run magemin-install
+magemin-install
 ```
 
 By default this fetches the latest **published release** into a per-user cache directory (e.g.
@@ -51,15 +32,33 @@ By default this fetches the latest **published release** into a per-user cache d
 import, no environment variable needed. Options:
 
 ```sh
-uv run magemin-install latest              # the main branch (dev/HEAD) instead of a release
-uv run magemin-install 2.0.0               # a specific tagged release (-> git ref v2.0.0)
-uv run magemin-install some-sha            # any other branch/tag/commit SHA
-uv run magemin-install --dest /path/to/dir --cc clang
+magemin-install latest              # the main branch (dev/HEAD) instead of a release
+magemin-install 2.0.0               # a specific tagged release (-> git ref v2.0.0)
+magemin-install some-sha            # any other branch/tag/commit SHA
+magemin-install --dest /path/to/dir --cc clang
 ```
 
-Same prerequisites as "Compiling the C library" above (a C compiler, `liblapacke-dev`,
-`libnlopt-dev`/equivalents, and `make` on `PATH`) -- this doesn't remove that requirement, it just
-also fetches the source for you instead of relying on the git-vendored copy.
+## Building from an existing MAGEMin source tree
+
+Already have a MAGEMin source checkout locally (e.g. this project's own dev repo, which vendors
+one at `MAGEMin/`) and want to build against it directly instead of downloading a copy?
+
+```sh
+./scripts/build_lib.sh
+```
+
+This runs `make lib` inside the source tree (with `USE_MPI=0`, since neither the API nor this
+package's parallelism needs MPI), then compiles the `magemin_ext/` companion extension (which adds
+buffer/activity fixing, phase suppression, sb/gh database support, and phase-name discovery on top
+of MAGEMin's own internal functions -- see `magemin_ext/magemin_ext.h` for its C-level contract) and
+links it together with MAGEMin's object files into one `libMAGEMin.so` inside that source tree. If
+your system's `cc`/`clang` isn't available, set `CC=gcc ./scripts/build_lib.sh` (or any other
+compiler).
+
+The source location defaults to `./MAGEMin` and can be overridden with `MAGEMIN_SRC_DIR` (e.g.
+`MAGEMIN_SRC_DIR=/path/to/MAGEMin ./scripts/build_lib.sh`) -- nothing under it is ever modified by
+this build, which keeps it safe to point at a separately managed/updated copy. Note this script is
+only available in this project's own dev repo, not part of the published PyPI package.
 
 ### Windows
 
@@ -88,10 +87,12 @@ cache directory `magemin-install` writes into, before falling back to a system-w
 ## Verifying the install
 
 ```sh
-uv run python -c "from magemin import MAGEMin, bulk_rocks; print(MAGEMin('ig').compute(P=8, T=800, bulk=bulk_rocks.KLB1_IG))"
+python -c "from magemin import MAGEMin, bulk_rocks; print(MAGEMin('ig').compute(P=8, T=800, bulk=bulk_rocks.KLB1_IG))"
 ```
 
 ## Development
+
+Clone this repo, then:
 
 ```sh
 uv sync --group dev
