@@ -14,9 +14,7 @@ companion C extension on top of it (buffer/activity fixing, phase suppression, `
 support, phase-name discovery) by calling MAGEMin's existing internal functions through its
 unmodified headers -- MAGEMin's own source is never edited, so a new MAGEMin release can just be
 downloaded and rebuilt (see [Installation](#installation)) without touching anything here.
-[`MAGEMin_C.jl`](https://github.com/ComputationalThermodynamics/MAGEMin_C.jl), the upstream Julia
-bindings, is used only as a development-time reference for API shape and behavior, not part of
-this repository. See [Scope and limitations](#scope-and-limitations) for what's still out of
+See [Scope and limitations](#scope-and-limitations) for what's still out of
 scope.
 
 ## Installation
