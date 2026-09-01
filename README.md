@@ -55,16 +55,6 @@ If your compiled library lives elsewhere, point `magemin` at it with:
 export MAGEMIN_LIB_PATH=/path/to/libMAGEMin.so
 ```
 
-Already have a MAGEMin source tree checked out locally and just want to build it in place?
-`./scripts/build_lib.sh` does that instead (`MAGEMIN_SRC_DIR` selects the source directory,
-default `./MAGEMin`).
-
-Want `PhaseDiagram.plot()`? Install the optional `plot` extra:
-
-```sh
-pip install magemin[plot]
-```
-
 ## Quickstart
 
 Predefined composition:
@@ -110,7 +100,8 @@ points = [Point(P=p, T=t, bulk=bulk_rocks.KLB1_IG) for p, t in [(5, 700), (10, 9
 results = multi_point_minimization("ig", points)
 ```
 
-Adaptively refined PT/PX/TX phase diagrams (`pip install magemin[plot]` for plotting):
+Want a pseudosection diagrams? For adaptively refined PT/PX/TX phase diagrams
+(`pip install magemin[plot]` for plotting):
 
 ```python
 from magemin import PhaseDiagram
