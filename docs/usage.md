@@ -183,18 +183,15 @@ assert result.solution_phases == ()
 print(result.ph, result.ph_frac)  # still populated
 ```
 
-## sb/gh database families
+## sb database family
 
 Alongside the `tc`-family databases (`ig`, `mp`, `mb`, ...), `MAGEMin` also accepts the `sb`
-(Stixrude & Lithgow-Bertelloni: `sb11`, `sb21`, `sb24`) and `gh` (MELTS: `xMELTS`, `rMELTS`,
-`pMELTS`) families -- the research group is inferred from the acronym automatically:
+(Stixrude & Lithgow-Bertelloni: `sb11`, `sb21`, `sb24`) family -- the research group is inferred
+from the acronym automatically:
 
 ```python
 with MAGEMin("sb11") as mg:
     result = mg.compute(P=10, T=800, bulk=bulk_rocks.KLB1_SB)
-
-with MAGEMin("xMELTS") as mg:
-    result = mg.compute(P=10, T=800, bulk=bulk_rocks.BASALT_GH)
 ```
 
 ## Many points in parallel

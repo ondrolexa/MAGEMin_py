@@ -24,8 +24,13 @@ _TC_DATABASES = frozenset(
     {"mpf", "mp", "mb", "mbe", "ig", "igd", "igad", "um", "ume", "mtl", "mpe", "all"}
 )
 _SB_DATABASES = frozenset({"sb11", "sb21", "sb24"})
+# "gh" (MELTS) family: implemented upstream but not yet released -- upstream author
+# (Nicolas Riel) asked that these stay unlisted/deactivated here until he's benchmarked
+# them against Mark Ghiorso's own MELTS implementation and given the go-ahead. Kept
+# defined (not deleted) so re-enabling is a one-line change: fold back into
+# _VALID_DATABASES below.
 _GH_DATABASES = frozenset({"xMELTS", "rMELTS", "pMELTS"})
-_VALID_DATABASES = _TC_DATABASES | _SB_DATABASES | _GH_DATABASES
+_VALID_DATABASES = _TC_DATABASES | _SB_DATABASES
 
 
 def _research_group_for(database: str) -> str:
@@ -69,8 +74,7 @@ class MAGEMin:
             database: Database acronym. "tc"-family: "ig", "igd", "igad",
                 "mp", "mpe", "mpf", "mb", "mbe", "um", "ume", "mtl", "all".
                 "sb"-family (Stixrude & Lithgow-Bertelloni): "sb11", "sb21",
-                "sb24". "gh"-family (MELTS): "xMELTS", "rMELTS", "pMELTS". The
-                research group is inferred automatically.
+                "sb24". The research group is inferred automatically.
             verbose: Whether the underlying C library should print progress
                 information to stdout during minimization.
             solver: Which local-minimizer algorithm the underlying C library

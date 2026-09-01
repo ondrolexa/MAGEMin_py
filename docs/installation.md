@@ -51,9 +51,9 @@ By default this fetches the latest **published release** into a per-user cache d
 import, no environment variable needed. Options:
 
 ```sh
-uv run magemin-install --version head      # the main branch (dev/HEAD) instead of a release
-uv run magemin-install --version 2.0.0     # a specific tagged release (-> git ref v2.0.0)
-uv run magemin-install --version some-sha  # any other branch/tag/commit SHA
+uv run magemin-install latest              # the main branch (dev/HEAD) instead of a release
+uv run magemin-install 2.0.0               # a specific tagged release (-> git ref v2.0.0)
+uv run magemin-install some-sha            # any other branch/tag/commit SHA
 uv run magemin-install --dest /path/to/dir --cc clang
 ```
 

@@ -13,7 +13,7 @@ This project vendors a copy of the upstream `MAGEMin` C library and its Julia bi
 (`MAGEMin_Init`, `MAGEMin_NOxides`, `MAGEMin_OxideNames`, `MAGEMin_ComputeEquilibrium`,
 `MAGEMin_Free`) intended by upstream for external C/C++ callers. A companion C extension,
 `magemin_ext/`, extends this with oxygen-buffer/fixed-activity constraints, phase suppression,
-`sb`/`gh` (Stixrude & Lithgow-Bertelloni / MELTS) database support, and reduced-memory output --
+`sb` (Stixrude & Lithgow-Bertelloni) database support, and reduced-memory output --
 by calling MAGEMin's existing internal functions through its unmodified headers, so a future
 MAGEMin update just drops in a fresh copy and rebuilds.
 
@@ -92,9 +92,8 @@ worked example end to end.
 | `um`, `ume` | Ultramafic (Evans & Frost 2021) / extended |
 | `mtl` | Mantle (Holland et al. 2013) |
 | `sb11`, `sb21`, `sb24` | Stixrude & Lithgow-Bertelloni (2011/2021/2024) |
-| `xMELTS`, `rMELTS`, `pMELTS` | MELTS |
 
-`MAGEMin(database)` infers the research group (`tc`/`sb`/`gh`) from the acronym automatically.
+`MAGEMin(database)` infers the research group (`tc`/`sb`) from the acronym automatically.
 
 ## Scope and limitations
 

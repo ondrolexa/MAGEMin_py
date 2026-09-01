@@ -98,6 +98,9 @@ KLB1_SB = BulkRock(
     values=(38.41, 3.18, 1.8, 5.85, 50.49, 0.250),
 )
 
+# Not registered in BULK_ROCKS_BY_DATABASE below: the "gh" (MELTS) database family is
+# currently unlisted/deactivated in magemin.core (see core.py's _GH_DATABASES comment).
+# Kept defined for when that family is reactivated.
 BASALT_GH = BulkRock(
     name="Rough basalt",
     database="xMELTS",
@@ -127,5 +130,4 @@ BULK_ROCKS_BY_DATABASE: dict[str, tuple[BulkRock, ...]] = {
     "um": (SERPENTINE_UM,),
     "mtl": (KLB1_MTL,),
     "sb11": (KLB1_SB,),
-    "xMELTS": (BASALT_GH,),
 }

@@ -54,9 +54,9 @@ def test_download_and_build_tag_v2_0_0(tmp_path):  # noqa: ANN001, ANN201
     _assert_loadable_with_all_symbols(lib_path)
 
 
-def test_download_and_build_head(tmp_path):  # noqa: ANN001, ANN201
-    """A real download+build of the main branch (HEAD), via version="head"."""
-    lib_path = _download.install(version="head", dest=tmp_path / "MAGEMin-head")
+def test_download_and_build_latest(tmp_path):  # noqa: ANN001, ANN201
+    """A real download+build of the main branch (HEAD), via version="latest"."""
+    lib_path = _download.install(version="latest", dest=tmp_path / "MAGEMin-latest")
     assert lib_path.exists()
     _assert_loadable_with_all_symbols(lib_path)
 

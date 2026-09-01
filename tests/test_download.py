@@ -25,8 +25,8 @@ def test_resolve_ref_none_looks_up_latest_release(monkeypatch: pytest.MonkeyPatc
     assert _download.resolve_ref(None) == "v2.1.0"
 
 
-def test_resolve_ref_head_is_main() -> None:
-    assert _download.resolve_ref("head") == "main"
+def test_resolve_ref_latest_is_main() -> None:
+    assert _download.resolve_ref("latest") == "main"
 
 
 def test_resolve_ref_semver_gets_v_prefix() -> None:

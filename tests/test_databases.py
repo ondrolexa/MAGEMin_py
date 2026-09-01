@@ -1,4 +1,4 @@
-"""Tests for sb/gh database family support (magemin_ext's MAGEMin_InitEx)."""
+"""Tests for sb database family support, and gh/MELTS's deliberate deactivation."""
 
 import pytest
 
@@ -13,11 +13,11 @@ def test_sb11_database_computes(require_library: None) -> None:
         assert result.status == 0
 
 
-def test_gh_database_computes(require_library: None) -> None:
-    """The 'gh' (MELTS) database family is reachable."""
-    with MAGEMin("xMELTS") as mg:
-        result = mg.compute(P=10, T=800, bulk=bulk_rocks.BASALT_GH)
-        assert result.status == 0
+def test_gh_database_disabled(require_library: None) -> None:
+    """The 'gh' (MELTS) family is implemented upstream but deliberately unlisted/deactivated."""
+    for acronym in ("xMELTS", "rMELTS", "pMELTS"):
+        with pytest.raises(MAGEMinInitError):
+            MAGEMin(acronym)
 
 
 def test_unknown_database_acronym_raises(require_library: None) -> None:

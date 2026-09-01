@@ -72,10 +72,10 @@ def resolve_ref(version: str | None) -> str:
     Args:
         version: `None` (the default) looks up and returns the latest
             published GitHub release's tag (a network call -- see
-            `_latest_release_ref`). `"head"` resolves to the `main` branch.
-            A bare `X.Y.Z` string is normalized to the release tag `vX.Y.Z`.
-            Any other string (a branch name, tag, or commit SHA) is used
-            as-is.
+            `_latest_release_ref`). `"latest"` resolves to the `main` branch
+            (the bleeding-edge tip, not necessarily a tagged release). A bare
+            `X.Y.Z` string is normalized to the release tag `vX.Y.Z`. Any
+            other string (a branch name, tag, or commit SHA) is used as-is.
 
     Returns:
         The git ref to substitute into GitHub's `/archive/{ref}.tar.gz` URL.
@@ -86,7 +86,7 @@ def resolve_ref(version: str | None) -> str:
     """
     if version is None:
         return _latest_release_ref()
-    if version == "head":
+    if version == "latest":
         return "main"
     if _SEMVER_RE.fullmatch(version):
         return f"v{version}"
@@ -109,7 +109,8 @@ def _latest_release_ref() -> str:
         if exc.code == 404:
             raise MAGEMinDownloadError(
                 f"no published releases found for {_GITHUB_OWNER}/{_GITHUB_REPO} -- "
-                'pass version="head" (or --version head) to use the main branch instead'
+                'pass version="latest" (or the "latest" positional argument) to use the '
+                "main branch instead"
             ) from exc
         raise MAGEMinDownloadError(f"failed to look up the latest release: {exc}") from exc
     except urllib.error.URLError as exc:
@@ -203,7 +204,7 @@ def download(
 
     Args:
         version: See `resolve_ref`. Defaults to the latest published release
-            (pass `version="head"` for the `main` branch).
+            (pass `version="latest"` for the `main` branch).
         dest: Directory the extracted source tree is moved to. Defaults to
             `default_cache_dir() / f"MAGEMin-{ref}"`. When left as the
             default, a successful download also updates the cache's
@@ -411,7 +412,7 @@ def install(
 
     Args:
         version: See `resolve_ref`. Defaults to the latest published release
-            (pass `version="head"` for the `main` branch).
+            (pass `version="latest"` for the `main` branch).
         dest: See `download`. Defaults to a per-user cache directory.
         force: See `download`.
         cc: See `build`.
@@ -433,10 +434,12 @@ def main(argv: list[str] | None = None) -> int:
         description="Download and build the MAGEMin C library from GitHub.",
     )
     parser.add_argument(
-        "--version",
+        "version",
+        nargs="?",
         default=None,
-        help='MAGEMin version to install: "head" for the main branch, X.Y.Z for release '
-        "tag vX.Y.Z, or any other git ref (branch/tag/SHA). Defaults to the latest "
+        help='MAGEMin version to install: "latest" for the tip of the main branch '
+        "(bleeding edge, not necessarily a tagged release), X.Y.Z for release tag "
+        "vX.Y.Z, or any other git ref (branch/tag/SHA). Defaults to the latest "
         "published release.",
     )
     parser.add_argument(
@@ -459,7 +462,7 @@ def main(argv: list[str] | None = None) -> int:
     group.add_argument(
         "--build-only",
         action="store_true",
-        help="Only build; --dest (or the default cache path for --version) must "
+        help="Only build; --dest (or the default cache path for the version argument) must "
         "already contain a downloaded/vendored source tree. Skips the network fetch.",
     )
     parser.add_argument(
@@ -472,9 +475,9 @@ def main(argv: list[str] | None = None) -> int:
         if args.build_only:
             if args.dest is None and args.version is None:
                 raise MAGEMinDownloadError(
-                    "--build-only needs --dest or an explicit --version when defaulting "
-                    "to the latest release, since finding the latest release requires a "
-                    "network lookup --build-only is meant to avoid"
+                    "--build-only needs --dest or an explicit version argument when "
+                    "defaulting to the latest release, since finding the latest release "
+                    "requires a network lookup --build-only is meant to avoid"
                 )
             src_dir = (
                 Path(args.dest)
