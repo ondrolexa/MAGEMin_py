@@ -42,6 +42,7 @@ Then download and build MAGEMin:
 
 ```sh
 magemin-install
+# or: uv run magemin-install
 ```
 
 This downloads a MAGEMin source release from GitHub, builds it (`make lib`, with `USE_MPI=0`,

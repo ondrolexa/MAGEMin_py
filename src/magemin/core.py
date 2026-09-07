@@ -175,6 +175,7 @@ class MAGEMin:
         buffer: str | None = None,
         buffer_value: float | None = None,
         suppress_phases: Sequence[str] | None = None,
+        use_phases: Sequence[str] | None = None,
         light: bool = False,
         name_solvus: bool = True,
     ) -> EquilibriumResult:
@@ -202,7 +203,14 @@ class MAGEMin:
                 `(0, 1)`. Required together with `buffer`.
             suppress_phases: Solution-phase or pure-phase names (see
                 `solution_phase_names`/`pure_phase_names`) to exclude from
-                this point's minimization.
+                this point's minimization. Mutually exclusive with
+                `use_phases`.
+            use_phases: Solution-phase names (see `solution_phase_names`) to
+                keep active; every other solution phase is suppressed.
+                Derived as `solution_phase_names` minus `use_phases` and
+                passed through exactly like `suppress_phases` -- pure
+                phases are never affected. Mutually exclusive with
+                `suppress_phases`.
             light: If True, skip building `solution_phases`/
                 `metastable_phases`/`pure_phases` on the result (left as
                 empty tuples) -- faster/lighter when only the phase-summary
@@ -227,9 +235,18 @@ class MAGEMin:
             MAGEMinComputeError: If `sys_in`/`buffer`/`buffer_value` is
                 invalid, or the underlying computation fails (including an
                 unrecognized `suppress_phases` name).
+            ValueError: If both `suppress_phases` and `use_phases` are given.
         """
         if self._closed:
             raise MAGEMinClosedHandleError("MAGEMin instance is closed")
+
+        if use_phases is not None:
+            if suppress_phases is not None:
+                raise ValueError("Cannot pass both suppress_phases and use_phases.")
+            use_set = set(use_phases)
+            suppress_phases = tuple(
+                name for name in self._solution_phase_names if name not in use_set
+            )
 
         if isinstance(bulk, BulkRock):
             if bulk.database != self._database or bulk.oxides != self._oxide_names:

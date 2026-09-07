@@ -87,3 +87,25 @@ def test_solution_phase_names_and_pure_phase_names(ig: MAGEMin) -> None:
     assert "liq" in ig.solution_phase_names
     assert "opx" in ig.solution_phase_names
     assert len(ig.pure_phase_names) > 0
+
+
+def test_use_phases_keeps_only_named_solution_phases(ig: MAGEMin) -> None:
+    """use_phases suppresses every solution phase not named, like suppress_phases=[spl]."""
+    use_phases = [name for name in ig.solution_phase_names if name != "spl"]
+    result = ig.compute(P=8, T=800, bulk=bulk_rocks.KLB1_IG, use_phases=use_phases)
+
+    assert result.status == 0
+    assert "spl" not in result.ph
+    assert sum(result.ph_frac) == pytest.approx(1.0, abs=1e-6)
+
+
+def test_use_phases_and_suppress_phases_both_given_raises(ig: MAGEMin) -> None:
+    """suppress_phases and use_phases are mutually exclusive."""
+    with pytest.raises(ValueError, match="Cannot pass both"):
+        ig.compute(
+            P=8,
+            T=800,
+            bulk=bulk_rocks.KLB1_IG,
+            suppress_phases=["spl"],
+            use_phases=["liq"],
+        )

@@ -31,3 +31,5 @@ Nothing released yet -- development to date is summarized below.
 - A thread-safe `multi_point_minimization`: a `pthread_rwlock_t` in `magemin_ext.c` around
   MAGEMin's process-wide, non-thread-safe uthash tables, fixing intermittent heap corruption under
   concurrent computation.
+- `use_phases` kwarg on `MAGEMin.compute`: an allowlist of solution phases to keep active,
+  implemented as the complement of `suppress_phases` (mutually exclusive with it).
