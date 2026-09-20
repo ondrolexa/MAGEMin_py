@@ -18,7 +18,7 @@ def solvus_name(database: str, phase_name: str, comp_variables: Sequence[float])
     solvus (e.g. `"fsp"` into plagioclase `"pl"` / alkali feldspar `"afs"`, `"spl"` into
     spinel/chromite/magnetite/ulvospinel). This returns the mineralogically specific name for
     such phases, or `phase_name` unchanged if no disambiguation rule applies for `database`
-    (including for databases with no rules at all, e.g. `"mtl"`, `"um"`, `"mpf"`, and the
+    (including for databases with no rules at all, e.g. `"mtl"`, `"um"`, and the
     `sb`/`gh` families).
 
     Args:

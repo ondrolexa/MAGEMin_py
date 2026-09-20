@@ -20,8 +20,12 @@ from magemin.results import EquilibriumResult
 
 _VALID_SYS_IN = ("mol", "wt")
 
+# "mpf" is deliberately absent: upstream's SetupDatabase maps it to EM_database = -1, but no
+# database-init branch handles -1 (gv.ox is never populated), so global_variable_TC_init
+# segfaults on it -- reproduced on MAGEMin 2.0.1 and 2.0.2. Rejected here as an unknown
+# acronym (a clean MAGEMinInitError) instead of killing the interpreter.
 _TC_DATABASES = frozenset(
-    {"mpf", "mp", "mb", "mbe", "ig", "igd", "igad", "um", "ume", "mtl", "mpe", "all"}
+    {"mp", "mb", "mbe", "ig", "igd", "igad", "um", "ume", "mtl", "mpe", "all"}
 )
 _SB_DATABASES = frozenset({"sb11", "sb21", "sb24"})
 # "gh" (MELTS) family: implemented upstream but not yet released -- upstream author
@@ -72,7 +76,7 @@ class MAGEMin:
 
         Args:
             database: Database acronym. "tc"-family: "ig", "igd", "igad",
-                "mp", "mpe", "mpf", "mb", "mbe", "um", "ume", "mtl", "all".
+                "mp", "mpe", "mb", "mbe", "um", "ume", "mtl", "all".
                 "sb"-family (Stixrude & Lithgow-Bertelloni): "sb11", "sb21",
                 "sb24". The research group is inferred automatically.
             verbose: Whether the underlying C library should print progress

@@ -31,3 +31,14 @@ def test_unknown_database_acronym_raises(require_library: None) -> None:
     """An unrecognized database acronym is rejected before reaching the C library."""
     with pytest.raises(MAGEMinInitError):
         MAGEMin("bogus")
+
+
+def test_mpf_and_br_acronyms_rejected(require_library: None) -> None:
+    """Upstream acronyms this package deliberately doesn't expose raise instead of crashing.
+
+    "mpf" segfaults inside MAGEMin's global_variable_TC_init (EM_database = -1 has no init
+    branch), and "po" is the unwrapped "br" (Berman) research group's only database.
+    """
+    for acronym in ("mpf", "po"):
+        with pytest.raises(MAGEMinInitError):
+            MAGEMin(acronym)
