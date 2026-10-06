@@ -154,9 +154,8 @@ uses: `0` (legacy), `1` (PGE + legacy hybrid), or `2` (hybrid PGE/LP -- the libr
 and this package's default). `multi_point_minimization` and `PhaseDiagram.pt`/`.px`/`.tx` accept
 the same kwarg, threaded through to every worker's handle.
 
-Since MAGEMin 2.0.6, `solver=0` and `solver=2` normally converge to the same equilibrium (earlier
-releases could resolve near-degenerate phase pairs, such as a feldspar solvus, differently). Keep
-the default unless you're specifically comparing solvers:
+`solver=0` and `solver=2` normally converge to the same equilibrium. Keep the default unless
+you're specifically comparing solvers:
 
 ```python
 with MAGEMin("mp", solver=0) as mg:

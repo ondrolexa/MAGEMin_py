@@ -33,9 +33,9 @@ _ARCHIVE_URL = "https://github.com/{owner}/{repo}/archive/{ref}.tar.gz"
 _RELEASES_LATEST_URL = "https://api.github.com/repos/{owner}/{repo}/releases/latest"
 
 _SEMVER_RE = re.compile(r"\d+\.\d+\.\d+")
-# magemin_ext.c relies on MAGEMin 2.0.6's thread-safe endmember-lookup registry
-# (hash_init.h) instead of its own lock; older versions race under multi_point_minimization.
-MIN_MAGEMIN_VERSION = (2, 0, 6)
+# magemin_ext.c relies on MAGEMin's thread-safe endmember-lookup registry (hash_init.h) for
+# multi_point_minimization, and on a fully initialized DEW model for the "all" database.
+MIN_MAGEMIN_VERSION = (2, 0, 7)
 _SOURCE_VERSION_RE = re.compile(r'strcpy\(\s*gv\.version\s*,\s*"(\d+)\.(\d+)\.(\d+)')
 _UNSAFE_DIRNAME_CHARS_RE = re.compile(r"[^A-Za-z0-9._-]")
 

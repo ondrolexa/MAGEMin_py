@@ -36,6 +36,47 @@ jobs:
       - name: Run tests
         run: uv run pytest -q --deselect tests/test_download_live.py
 
+  sanitizers:
+    # libMAGEMin + magemin_ext built with ASan/UBSan, with every allocation filled with
+    # junk (malloc_fill_byte) so reads of uninitialized heap memory fail deterministically
+    # instead of by luck.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y liblapacke-dev libnlopt-dev
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.14"
+          enable-cache: true
+
+      - name: Install Python dependencies
+        run: uv sync --group dev
+
+      - name: Download MAGEMin source
+        # The latest published release, i.e. the same one `magemin-install` builds.
+        run: |
+          ref="$(uv run python -c 'from magemin._download import resolve_ref; print(resolve_ref(None))')"
+          mkdir -p "$RUNNER_TEMP/magemin"
+          curl -fsSL "https://github.com/ComputationalThermodynamics/MAGEMin/archive/$ref.tar.gz" \
+            | tar -xz --strip-components=1 -C "$RUNNER_TEMP/magemin"
+
+      - name: Build sanitized library
+        run: MAGEMIN_SRC_DIR="$RUNNER_TEMP/magemin" SANITIZE=1 ./scripts/build_lib.sh
+
+      - name: Run tests under ASan/UBSan
+        # Plotting tests excluded: matplotlib's own extensions don't run under a preloaded ASan.
+        run: |
+          MAGEMIN_LIB_PATH="$RUNNER_TEMP/magemin/libMAGEMin.so" \
+          LD_PRELOAD="$(gcc -print-file-name=libasan.so)" PYTHONMALLOC=malloc \
+          ASAN_OPTIONS=detect_leaks=0:halt_on_error=1:malloc_fill_byte=190 \
+          UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 \
+          .venv/bin/python -m pytest -q --deselect tests/test_download_live.py \
+            --ignore=tests/test_diagrams_plot.py --ignore=tests/test_pseudosection_plot.py
+
   docs:
     runs-on: ubuntu-latest
     steps:

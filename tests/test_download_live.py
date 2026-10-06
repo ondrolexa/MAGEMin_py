@@ -47,9 +47,9 @@ def _assert_loadable_with_all_symbols(lib_path):  # noqa: ANN001, ANN202
         assert hasattr(lib, name)
 
 
-def test_download_and_build_tag_v2_0_6(tmp_path):  # noqa: ANN001, ANN201
-    """A real download+build of the v2.0.6 release tag."""
-    lib_path = _download.install(version="2.0.6", dest=tmp_path / "MAGEMin-2.0.6")
+def test_download_and_build_tag_v2_0_7(tmp_path):  # noqa: ANN001, ANN201
+    """A real download+build of the v2.0.7 release tag."""
+    lib_path = _download.install(version="2.0.7", dest=tmp_path / "MAGEMin-2.0.7")
     assert lib_path.exists()
     _assert_loadable_with_all_symbols(lib_path)
 
@@ -78,7 +78,7 @@ def test_get_library_picks_up_cache_install(monkeypatch, tmp_path):  # noqa: ANN
     # tree, so this actually exercises the cache-dir discovery tier.
     monkeypatch.setattr(_lib, "_candidate_paths", lambda: [])
 
-    _download.install(version="2.0.6")  # default dest -> writes the marker
+    _download.install(version="2.0.7")  # default dest -> writes the marker
 
     lib = _lib.get_library()
     assert isinstance(lib, ctypes.CDLL)

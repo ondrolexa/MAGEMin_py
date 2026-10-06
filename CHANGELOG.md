@@ -28,9 +28,10 @@ Nothing released yet -- development to date is summarized below.
   `.refine()`/`.validate()`/`.plot()`/`.show()`.
 - Optional `plot` (`matplotlib`) and `mesh` (`numpy`+`scipy`) extras, lazily imported so neither is
   required just to `import magemin`.
-- A thread-safe `multi_point_minimization`, relying on MAGEMin 2.0.6's thread-safe
-  endmember-lookup registry. Concurrent handles for *different* databases now also give correct
-  results.
+- A thread-safe `multi_point_minimization`, relying on MAGEMin's thread-safe endmember-lookup
+  registry; concurrent handles for the same or different databases give correct results.
 - `use_phases` kwarg on `MAGEMin.compute`: an allowlist of solution phases to keep active,
   implemented as the complement of `suppress_phases` (mutually exclusive with it).
 - Solvus naming for the `"all"` database's new Mn-bearing ilmenite model `ilmmn_W14`.
+- Requires MAGEMin **2.0.7 or newer** (`magemin-install` and `scripts/build_lib.sh` refuse older
+  source trees).

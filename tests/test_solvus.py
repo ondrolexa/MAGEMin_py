@@ -46,7 +46,7 @@ def test_solvus_name_synthetic_fsp_threshold() -> None:
 
 
 def test_solvus_name_all_database_ilmm_models() -> None:
-    """Both Mn-free (ilmm_W14) and Mn-bearing (ilmmn_W14, MAGEMin >= 2.0.6) models split."""
+    """Both Mn-free (ilmm_W14) and Mn-bearing (ilmmn_W14) models split."""
     for model in ("ilmm_W14", "ilmmn_W14"):
         assert solvus_name("all", model, [0.8, 0.0, 0.0, 0.0]) == "ilmm"
         assert solvus_name("all", model, [0.2, 0.0, 0.0, 0.0]) == "hemm"

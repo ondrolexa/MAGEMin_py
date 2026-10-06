@@ -22,9 +22,8 @@ _VALID_SYS_IN = ("mol", "wt")
 
 # "mpf" is deliberately absent: upstream's SetupDatabase maps it to EM_database = -1, but no
 # database-init branch handles -1 (gv.ox is never populated), so global_variable_TC_init
-# segfaults on it -- reproduced on MAGEMin 2.0.1, 2.0.2 and still
-# present (EM_database = -1) in 2.0.6. Rejected here as an unknown
-# acronym (a clean MAGEMinInitError) instead of killing the interpreter.
+# segfaults on it. Rejected here as an unknown acronym (a clean MAGEMinInitError) instead of
+# killing the interpreter.
 _TC_DATABASES = frozenset(
     {"mp", "mb", "mbe", "ig", "igd", "igad", "um", "ume", "mtl", "mpe", "all"}
 )
@@ -97,9 +96,9 @@ class MAGEMin:
                 unlike `buffer`/`suppress_phases`). Forced to `0` by the
                 underlying library for `"sb"`/`"gh"`-family databases
                 regardless of what's requested here -- those only support
-                the legacy solver upstream. Since MAGEMin 2.0.6 solvers 0 and
-                2 normally converge to the same equilibrium; pass `2` (the
-                default) unless you're specifically comparing solvers.
+                the legacy solver upstream. Solvers 0 and 2 normally
+                converge to the same equilibrium; pass `2` (the default)
+                unless you're specifically comparing solvers.
 
         Raises:
             MAGEMinLibraryNotFoundError: If libMAGEMin cannot be located.

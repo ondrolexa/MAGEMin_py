@@ -1,12 +1,9 @@
 """Regression tests for concurrent MAGEMin use across threads.
 
-Through MAGEMin 2.0.2, the vendored C library kept its EM/DEW/PP endmember-lookup
-tables as unsynchronized process-wide globals, rebuilt on every handle creation, and
-concurrent MAGEMin_InitEx/MAGEMin_ComputeEquilibriumEx calls intermittently corrupted the
-heap (reproducible with as few as 3 workers). magemin_ext.c guarded this with a
-pthread_rwlock_t; MAGEMin 2.0.6 replaced the tables with an append-only per-(research
-group, dataset) registry, so the lock was removed and >= 2.0.6 is required. A single pytest
-run can't reliably catch an intermittent crash, so these are bounded regression guards.
+magemin_ext.c adds no locking of its own: concurrent MAGEMin_InitEx/
+MAGEMin_ComputeEquilibriumEx calls rely on MAGEMin keeping its EM/DEW/PP endmember-lookup
+tables in an append-only per-(research group, dataset) registry. A single pytest run can't
+reliably catch an intermittent heap corruption, so these are bounded regression guards.
 """
 
 import os
@@ -49,11 +46,7 @@ def test_concurrent_handles_for_same_database_agree_with_sequential(
 def test_concurrent_handles_for_different_databases_match_serial(
     require_library: None,
 ) -> None:
-    """Concurrent handles on different databases give the same results as serial runs.
-
-    Before MAGEMin 2.0.6 the global lookup tables held only one database at a time, so
-    this pattern was memory-safe (with the old lock) but not guaranteed correct.
-    """
+    """Concurrent handles on different databases give the same results as serial runs."""
     cases = {
         "mp": bulk_rocks.FPWM_PELITE_MP,
         "ig": bulk_rocks.KLB1_IG,

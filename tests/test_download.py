@@ -30,13 +30,13 @@ def test_resolve_ref_latest_is_main() -> None:
 
 
 def test_resolve_ref_semver_gets_v_prefix() -> None:
-    assert _download.resolve_ref("2.0.6") == "v2.0.6"
+    assert _download.resolve_ref("2.0.7") == "v2.0.7"
     assert _download.resolve_ref("2.1.0") == "v2.1.0"
 
 
 def test_resolve_ref_rejects_versions_below_minimum() -> None:
-    with pytest.raises(MAGEMinDownloadError, match=">= 2.0.6"):
-        _download.resolve_ref("2.0.5")
+    with pytest.raises(MAGEMinDownloadError, match=">= 2.0.7"):
+        _download.resolve_ref("2.0.6")
 
 
 def test_resolve_ref_passthrough_for_non_semver() -> None:
@@ -261,12 +261,12 @@ class _Recorder:
         self.calls.append((cmd, cwd))
 
 
-def _fake_src_dir(tmp_path: Path, version: str = "2.0.6") -> Path:
+def _fake_src_dir(tmp_path: Path, version: str = "2.0.7") -> Path:
     """A MAGEMin source tree stub whose src/initialize.c declares `version`."""
     src_dir = tmp_path / "MAGEMin"
     (src_dir / "src").mkdir(parents=True)
     (src_dir / "src" / "initialize.c").write_text(
-        f'\tstrcpy(gv.version,"{version} [06/10/2026]");\n'
+        f'\tstrcpy(gv.version,"{version} [07/10/2026]");\n'
     )
     return src_dir
 
@@ -342,9 +342,9 @@ def test_build_rejects_source_tree_below_minimum(
 ) -> None:
     recorder = _Recorder()
     monkeypatch.setattr(_download, "_run", recorder)
-    src_dir = _fake_src_dir(tmp_path, version="2.0.2")
+    src_dir = _fake_src_dir(tmp_path, version="2.0.6")
 
-    with pytest.raises(MAGEMinDownloadError, match="MAGEMin 2.0.2 is not supported"):
+    with pytest.raises(MAGEMinDownloadError, match="MAGEMin 2.0.6 is not supported"):
         _download.build(src_dir)
     assert recorder.calls == []
 

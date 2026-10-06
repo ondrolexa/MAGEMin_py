@@ -17,13 +17,11 @@
  **   to expose a hook for it. Keep these in sync with MAGEMin_api.c's own
  **   MAGEMin_Init/MAGEMin_ComputeEquilibrium if that file's sequence changes.
  **
- **   Thread safety relies on MAGEMin >= 2.0.6, whose hash_init.h keeps its
- **   endmember/DEW lookup tables in an append-only registry keyed on
- **   (research_group, EM_dataset) and published with atomics, so concurrent
- **   handles -- for the same or different databases -- never race on them.
- **   Older versions rebuilt one process-wide table on every init with no
- **   lock; this extension no longer guards against that, which is why the
- **   build refuses MAGEMin < 2.0.6.
+ **   Thread safety relies on MAGEMin's hash_init.h keeping its endmember/DEW
+ **   lookup tables in an append-only registry keyed on (research_group,
+ **   EM_dataset) and published with atomics, so concurrent handles -- for
+ **   the same or different databases -- never race on them; this extension
+ **   adds no locking of its own. The build requires MAGEMin >= 2.0.7.
  @*/
 
 #include <stdio.h>

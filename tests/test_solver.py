@@ -5,10 +5,8 @@ Added while looking into a user report that suppressing "ilm" doesn't let "ilmm"
 be a separate bug, unrelated to solver choice -- see tests/test_suppress_phases.py
 and magemin_ext.c's MAGEMin_ComputeEquilibriumEx for the actual fix (gv.mbCpx/
 mbIlm/mpSp/mpIlm gate whether a near-degenerate pair's pseudocompounds are even
-generated, independent of ss_flags). Through MAGEMin 2.0.2, solver=0 also resolved a
-near-degenerate feldspar solvus point (afs+pl) that solver=2 missed; since 2.0.6 the
-solvers agree there and across a full mp P-T grid, so the test below only checks that
-both solvers run and converge to the same equilibrium.
+generated, independent of ss_flags). The solvers agree across a full mp P-T grid,
+so the test below only checks that both run and converge to the same equilibrium.
 """
 
 import pytest
@@ -43,8 +41,8 @@ def test_sb_database_accepts_any_solver_request(require_library: None) -> None:
 def test_legacy_and_default_solvers_agree(require_library: None) -> None:
     """solver=0 (legacy) and solver=2 (default) both converge to the same equilibrium.
 
-    P=10 kbar, T=790 C for the pseudosection tutorial's metapelite bulk was, through
-    MAGEMin 2.0.2, a point where solver=0 found afs+pl but solver=2 only pl.
+    P=10 kbar, T=790 C for the pseudosection tutorial's metapelite bulk sits on a
+    near-degenerate feldspar solvus (afs+pl), a sensitive point for solver agreement.
     """
     bulk = [
         61.5428,
