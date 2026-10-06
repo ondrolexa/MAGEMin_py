@@ -30,7 +30,13 @@ def test_resolve_ref_latest_is_main() -> None:
 
 
 def test_resolve_ref_semver_gets_v_prefix() -> None:
-    assert _download.resolve_ref("2.0.0") == "v2.0.0"
+    assert _download.resolve_ref("2.0.6") == "v2.0.6"
+    assert _download.resolve_ref("2.1.0") == "v2.1.0"
+
+
+def test_resolve_ref_rejects_versions_below_minimum() -> None:
+    with pytest.raises(MAGEMinDownloadError, match=">= 2.0.6"):
+        _download.resolve_ref("2.0.5")
 
 
 def test_resolve_ref_passthrough_for_non_semver() -> None:
@@ -255,6 +261,16 @@ class _Recorder:
         self.calls.append((cmd, cwd))
 
 
+def _fake_src_dir(tmp_path: Path, version: str = "2.0.6") -> Path:
+    """A MAGEMin source tree stub whose src/initialize.c declares `version`."""
+    src_dir = tmp_path / "MAGEMin"
+    (src_dir / "src").mkdir(parents=True)
+    (src_dir / "src" / "initialize.c").write_text(
+        f'\tstrcpy(gv.version,"{version} [06/10/2026]");\n'
+    )
+    return src_dir
+
+
 @pytest.mark.parametrize(
     ("system", "expected_inc", "expected_libs", "expected_ext"),
     [
@@ -281,8 +297,7 @@ def test_build_command_sequence_and_platform_defaults(
     monkeypatch.setattr(platform, "system", lambda: system)
     monkeypatch.delenv("CC", raising=False)
 
-    src_dir = tmp_path / "MAGEMin"
-    (src_dir / "src").mkdir(parents=True)
+    src_dir = _fake_src_dir(tmp_path)
 
     out = _download.build(src_dir)
 
@@ -314,13 +329,37 @@ def test_build_respects_explicit_cc_inc_libs(
     recorder = _Recorder()
     monkeypatch.setattr(_download, "_run", recorder)
 
-    src_dir = tmp_path / "MAGEMin"
-    (src_dir / "src").mkdir(parents=True)
+    src_dir = _fake_src_dir(tmp_path)
 
     _download.build(src_dir, cc="clang", inc="-I/custom", libs="-lcustom")
 
     lib_cmd, _ = recorder.calls[1]
     assert lib_cmd == ["make", "lib", "USE_MPI=0", "CC=clang", "INC=-I/custom", "LIBS=-lcustom"]
+
+
+def test_build_rejects_source_tree_below_minimum(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    recorder = _Recorder()
+    monkeypatch.setattr(_download, "_run", recorder)
+    src_dir = _fake_src_dir(tmp_path, version="2.0.2")
+
+    with pytest.raises(MAGEMinDownloadError, match="MAGEMin 2.0.2 is not supported"):
+        _download.build(src_dir)
+    assert recorder.calls == []
+
+
+def test_build_warns_but_proceeds_when_version_unknown(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    recorder = _Recorder()
+    monkeypatch.setattr(_download, "_run", recorder)
+    src_dir = tmp_path / "MAGEMin"
+    (src_dir / "src").mkdir(parents=True)
+
+    with pytest.warns(UserWarning, match="Could not determine the MAGEMin version"):
+        _download.build(src_dir)
+    assert len(recorder.calls) == 4
 
 
 def test_run_missing_executable_raises_download_error(tmp_path: Path) -> None:

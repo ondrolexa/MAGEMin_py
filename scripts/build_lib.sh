@@ -15,6 +15,17 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 magemin_src="${MAGEMIN_SRC_DIR:-$repo_root/MAGEMin}"
 cc="${CC:-gcc}"
 
+# magemin_ext.c relies on MAGEMin 2.0.6's thread-safe endmember-lookup registry
+# (hash_init.h); keep in sync with MIN_MAGEMIN_VERSION in src/magemin/_download.py.
+min_version="2.0.6"
+version="$(grep -oE 'strcpy\(gv\.version,"[0-9]+\.[0-9]+\.[0-9]+' "$magemin_src/src/initialize.c" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+$' || true)"
+if [[ -z "$version" ]]; then
+    echo "warning: could not determine the MAGEMin version; versions older than $min_version are unsupported" >&2
+elif [[ "$(printf '%s\n%s\n' "$min_version" "$version" | sort -V | head -n1)" != "$min_version" ]]; then
+    echo "error: MAGEMin $version is not supported; this package requires MAGEMin >= $min_version" >&2
+    exit 1
+fi
+
 cd "$magemin_src"
 make clean
 make lib USE_MPI=0 CC="$cc"
@@ -23,7 +34,7 @@ make lib USE_MPI=0 CC="$cc"
 # `all:` -- does not clean up afterward).
 rm -f libMAGEMin.dylib
 
-ccflags="-Wall -O3 -g -fPIC -pthread -Wno-unused-variable -Wno-unused-but-set-variable -march=native -funroll-loops"
+ccflags="-Wall -O3 -g -fPIC -Wno-unused-variable -Wno-unused-but-set-variable -march=native -funroll-loops"
 inc=""
 if [[ "$(uname -s)" == "Darwin" ]]; then
     inc="-I/opt/homebrew/include"
@@ -43,7 +54,7 @@ else
     libs="-lm -framework Accelerate /opt/homebrew/lib/libnlopt.dylib"
 fi
 
-"$cc" -shared -fPIC -pthread -o "$out" \
+"$cc" -shared -fPIC -o "$out" \
     $vendored_objects "$repo_root/src/magemin/magemin_ext/magemin_ext.o" \
     $inc $libs -flto
 

@@ -38,7 +38,7 @@ def test_klb1_p8_t800(ig: MAGEMin) -> None:
     # rho is derived from a second Gibbs-energy derivative, which is more sensitive than g or
     # ph_frac to the floating-point rounding path -- and MAGEMin's Makefile builds with
     # -march=native, so that path (and thus rho, at the ~1e-5 relative level) varies by CPU.
-    assert result.rho == pytest.approx(3282.556, rel=1e-4)
+    assert result.rho == pytest.approx(3280.842, rel=1e-4)
 
     fractions = dict(zip(result.ph, result.ph_frac, strict=True))
     assert fractions["opx"] == pytest.approx(0.22805, abs=1e-4)

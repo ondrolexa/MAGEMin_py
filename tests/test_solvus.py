@@ -45,6 +45,14 @@ def test_solvus_name_synthetic_fsp_threshold() -> None:
     assert solvus_name("ig", "fsp", [0.0, 0.1]) == "pl"
 
 
+def test_solvus_name_all_database_ilmm_models() -> None:
+    """Both Mn-free (ilmm_W14) and Mn-bearing (ilmmn_W14, MAGEMin >= 2.0.6) models split."""
+    for model in ("ilmm_W14", "ilmmn_W14"):
+        assert solvus_name("all", model, [0.8, 0.0, 0.0, 0.0]) == "ilmm"
+        assert solvus_name("all", model, [0.2, 0.0, 0.0, 0.0]) == "hemm"
+    assert base_phase_name("all", "ilmm") == "ilmm_W14"
+
+
 def test_solvus_name_unrecognized_database_returns_unchanged() -> None:
     """A database with no disambiguation rules returns the name unchanged."""
     assert solvus_name("mtl", "spl", [0.9]) == "spl"

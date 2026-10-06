@@ -29,11 +29,13 @@ magemin-install
 
 By default this fetches the latest **published release** into a per-user cache directory (e.g.
 `~/.cache/magemin` on Linux) and builds it there; `magemin` finds it automatically on the next
-import, no environment variable needed. Options:
+import, no environment variable needed. MAGEMin **2.0.6 or newer** is required (older releases are
+not thread-safe with this package's C extension); `magemin-install` and `scripts/build_lib.sh`
+refuse to build anything older. Options:
 
 ```sh
 magemin-install latest              # the main branch (dev/HEAD) instead of a release
-magemin-install 2.0.0               # a specific tagged release (-> git ref v2.0.0)
+magemin-install 2.0.6               # a specific tagged release (-> git ref v2.0.6)
 magemin-install some-sha            # any other branch/tag/commit SHA
 magemin-install --dest /path/to/dir --cc clang
 ```

@@ -12,7 +12,7 @@ Nothing released yet -- development to date is summarized below.
 ### Added
 
 - `MAGEMin`/`Point`/`multi_point_minimization`: a `ctypes` wrapper around MAGEMin's official
-  minimal C API, plus vendored `MAGEMin`/`MAGEMin_C.jl` reference sources.
+  minimal C API.
 - `magemin_ext/`, a companion C extension adding oxygen-buffer/fixed-activity constraints, phase
   suppression, `sb`/`gh` (Stixrude & Lithgow-Bertelloni / MELTS) database support, and a
   reduced-memory `light` output mode.
@@ -28,8 +28,9 @@ Nothing released yet -- development to date is summarized below.
   `.refine()`/`.validate()`/`.plot()`/`.show()`.
 - Optional `plot` (`matplotlib`) and `mesh` (`numpy`+`scipy`) extras, lazily imported so neither is
   required just to `import magemin`.
-- A thread-safe `multi_point_minimization`: a `pthread_rwlock_t` in `magemin_ext.c` around
-  MAGEMin's process-wide, non-thread-safe uthash tables, fixing intermittent heap corruption under
-  concurrent computation.
+- A thread-safe `multi_point_minimization`, relying on MAGEMin 2.0.6's thread-safe
+  endmember-lookup registry. Concurrent handles for *different* databases now also give correct
+  results.
 - `use_phases` kwarg on `MAGEMin.compute`: an allowlist of solution phases to keep active,
   implemented as the complement of `suppress_phases` (mutually exclusive with it).
+- Solvus naming for the `"all"` database's new Mn-bearing ilmenite model `ilmmn_W14`.

@@ -135,7 +135,7 @@ def solvus_name(database: str, phase_name: str, comp_variables: Sequence[float])
             name = "hem" if -x[0] + 0.5 > 0.0 else "ilm"
         elif phase_name == "ilm_W00":
             name = "hem" if 1.0 - x[0] > 0.5 else "ilm"
-        elif phase_name == "ilmm_W14":
+        elif phase_name in ("ilmm_W14", "ilmmn_W14"):
             name = "ilmm" if x[0] - 0.5 > 0.0 else "hemm"
         elif phase_name == "amp_G16":
             if x[2] - 0.5 > 0.0:

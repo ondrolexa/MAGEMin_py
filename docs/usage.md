@@ -154,15 +154,13 @@ uses: `0` (legacy), `1` (PGE + legacy hybrid), or `2` (hybrid PGE/LP -- the libr
 and this package's default). `multi_point_minimization` and `PhaseDiagram.pt`/`.px`/`.tx` accept
 the same kwarg, threaded through to every worker's handle.
 
-This matters because two near-degenerate phases -- distinct solution models that are both close to
-stable for the same bulk/P/T -- can resolve differently depending on solver. For example, at
-`P=10, T=790` for a typical `mp`-database metapelite bulk, the default `solver=2` finds only `pl`
-(plagioclase) stable, while `solver=0` finds the feldspar solvus splits into *both* `afs` and `pl`:
+Since MAGEMin 2.0.6, `solver=0` and `solver=2` normally converge to the same equilibrium (earlier
+releases could resolve near-degenerate phase pairs, such as a feldspar solvus, differently). Keep
+the default unless you're specifically comparing solvers:
 
 ```python
 with MAGEMin("mp", solver=0) as mg:
-    result = mg.compute(P=10, T=790, bulk=bulk, sys_in="mol", name_solvus=True)
-    print(result.ph)  # includes 'afs' -- solver=2 (the default) would not
+    result = mg.compute(P=10, T=790, bulk=bulk, sys_in="mol")
 ```
 
 `solver` is forced to `0` by the underlying library for `sb`/`gh`-family databases regardless of

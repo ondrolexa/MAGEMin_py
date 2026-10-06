@@ -5,9 +5,10 @@ Added while looking into a user report that suppressing "ilm" doesn't let "ilmm"
 be a separate bug, unrelated to solver choice -- see tests/test_suppress_phases.py
 and magemin_ext.c's MAGEMin_ComputeEquilibriumEx for the actual fix (gv.mbCpx/
 mbIlm/mpSp/mpIlm gate whether a near-degenerate pair's pseudocompounds are even
-generated, independent of ss_flags). What solver choice IS independently verified
-to affect: other near-degenerate phase pairs where both variants are already
-reachable -- see test_solver_changes_result_for_near_degenerate_feldspar_case below.
+generated, independent of ss_flags). Through MAGEMin 2.0.2, solver=0 also resolved a
+near-degenerate feldspar solvus point (afs+pl) that solver=2 missed; since 2.0.6 the
+solvers agree there and across a full mp P-T grid, so the test below only checks that
+both solvers run and converge to the same equilibrium.
 """
 
 import pytest
@@ -39,14 +40,11 @@ def test_sb_database_accepts_any_solver_request(require_library: None) -> None:
         assert result.status == 0
 
 
-def test_solver_changes_result_for_near_degenerate_feldspar_case(require_library: None) -> None:
-    """solver has a real, verified effect: a two-feldspar-solvus point flips with solver=0.
+def test_legacy_and_default_solvers_agree(require_library: None) -> None:
+    """solver=0 (legacy) and solver=2 (default) both converge to the same equilibrium.
 
-    P=10 kbar, T=790 C for this bulk composition (the pseudosection tutorial's
-    metapelite bulk) is a near-degenerate point where the feldspar solvus (alkali
-    feldspar `afs` vs plagioclase `pl`) resolves differently depending on solver:
-    the default (solver=2, hybrid PGE/LP) finds only `pl` stable, while the legacy
-    solver (0) finds both `afs` and `pl` stable together.
+    P=10 kbar, T=790 C for the pseudosection tutorial's metapelite bulk was, through
+    MAGEMin 2.0.2, a point where solver=0 found afs+pl but solver=2 only pl.
     """
     bulk = [
         61.5428,
@@ -67,5 +65,7 @@ def test_solver_changes_result_for_near_degenerate_feldspar_case(require_library
     with MAGEMin("mp", solver=0) as mg:
         legacy_result = mg.compute(P=10, T=790, bulk=bulk, sys_in="mol", name_solvus=True)
 
-    assert "afs" not in default_result.ph
-    assert "afs" in legacy_result.ph
+    assert default_result.status == 0
+    assert legacy_result.status == 0
+    assert set(default_result.ph) == set(legacy_result.ph)
+    assert default_result.g == pytest.approx(legacy_result.g, abs=1e-4)

@@ -21,8 +21,6 @@
 
 #include "MAGEMin_api.h"
 
-#include <pthread.h>
-
 #ifdef __cplusplus
 extern "C" {
 #endif

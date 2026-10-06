@@ -76,7 +76,7 @@ with MAGEMin("mp") as mg:
 ```
 
 ```
-('bi', 'ilmm', 'g', 'pl', 'mu', 'st', 'q', 'H2O')
+('bi', 'g', 'ilmm', 'st', 'pl', 'mu', 'q', 'H2O')
 ```
 
 With `ilm` suppressed, `ilmm` (the other ilmenite-group model) takes its place -- some databases
@@ -114,8 +114,8 @@ print(len({c.assemblage for c in diagram.cells if c.resolved}), "distinct stable
 ```
 
 ```
-4231 points computed
-3325 mesh cells
+4235 points computed
+3331 mesh cells
 27 distinct stable assemblages
 ```
 
@@ -251,7 +251,7 @@ px.plot()
 
 ![Metapelite PX section at 700 °C](assets/tutorial_mp_px.png)
 
-25 distinct assemblages resolve here -- the most of any section, since it cuts across the most
+26 distinct assemblages resolve here -- the most of any section, since it cuts across the most
 reaction topology at once. Melt (`liq`) is present across the entire pressure and composition
 range at this temperature. Kyanite (`ky`) and sillimanite (`sill`) again mark the Al2SiO5
 polymorph boundary, splitting the diagram into a kyanite-bearing upper part (above ~7.7 kbar) and
@@ -297,11 +297,11 @@ print(
 ```
 
 ```
-710 points computed
+707 points computed
 33 distinct stable assemblages
 ```
 
-Far fewer points than step 4's quadtree diagram (710 vs. 4231) for a comparable number of distinct
+Far fewer points than step 4's quadtree diagram (707 vs. 4235) for a comparable number of distinct
 assemblages (33 vs. 27) -- the hex lattice concentrates points near boundaries directly rather than
 recursively subdividing whole cells, so it reaches a similar picture of the reaction network with
 much less compute, at the cost of a fuzzier, unfilled view between points (see the plot below).

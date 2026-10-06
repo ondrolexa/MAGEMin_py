@@ -22,7 +22,8 @@ _VALID_SYS_IN = ("mol", "wt")
 
 # "mpf" is deliberately absent: upstream's SetupDatabase maps it to EM_database = -1, but no
 # database-init branch handles -1 (gv.ox is never populated), so global_variable_TC_init
-# segfaults on it -- reproduced on MAGEMin 2.0.1 and 2.0.2. Rejected here as an unknown
+# segfaults on it -- reproduced on MAGEMin 2.0.1, 2.0.2 and still
+# present (EM_database = -1) in 2.0.6. Rejected here as an unknown
 # acronym (a clean MAGEMinInitError) instead of killing the interpreter.
 _TC_DATABASES = frozenset(
     {"mp", "mb", "mbe", "ig", "igd", "igad", "um", "ume", "mtl", "mpe", "all"}
@@ -96,13 +97,9 @@ class MAGEMin:
                 unlike `buffer`/`suppress_phases`). Forced to `0` by the
                 underlying library for `"sb"`/`"gh"`-family databases
                 regardless of what's requested here -- those only support
-                the legacy solver upstream. Different solvers (0/1/2) can
-                converge to different local minima for near-degenerate phase
-                pairs -- e.g. at `P=10, T=790` for a typical `"mp"`-database
-                metapelite bulk, `solver=0` finds the feldspar solvus splits
-                into both `"afs"` and `"pl"`, while the default `solver=2`
-                finds only `"pl"` stable. Pass `2` (the default) unless
-                you're specifically exploring this kind of sensitivity.
+                the legacy solver upstream. Since MAGEMin 2.0.6 solvers 0 and
+                2 normally converge to the same equilibrium; pass `2` (the
+                default) unless you're specifically comparing solvers.
 
         Raises:
             MAGEMinLibraryNotFoundError: If libMAGEMin cannot be located.

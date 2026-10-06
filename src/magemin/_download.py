@@ -22,6 +22,7 @@ import tarfile
 import tempfile
 import urllib.error
 import urllib.request
+import warnings
 from pathlib import Path
 
 from magemin.errors import MAGEMinDownloadError, MAGEMinError
@@ -32,6 +33,10 @@ _ARCHIVE_URL = "https://github.com/{owner}/{repo}/archive/{ref}.tar.gz"
 _RELEASES_LATEST_URL = "https://api.github.com/repos/{owner}/{repo}/releases/latest"
 
 _SEMVER_RE = re.compile(r"\d+\.\d+\.\d+")
+# magemin_ext.c relies on MAGEMin 2.0.6's thread-safe endmember-lookup registry
+# (hash_init.h) instead of its own lock; older versions race under multi_point_minimization.
+MIN_MAGEMIN_VERSION = (2, 0, 6)
+_SOURCE_VERSION_RE = re.compile(r'strcpy\(\s*gv\.version\s*,\s*"(\d+)\.(\d+)\.(\d+)')
 _UNSAFE_DIRNAME_CHARS_RE = re.compile(r"[^A-Za-z0-9._-]")
 
 # Platform defaults, mirroring scripts/build_lib.sh's Linux/Darwin values exactly, plus a
@@ -58,7 +63,6 @@ _CCFLAGS = [
     "-O3",
     "-g",
     "-fPIC",
-    "-pthread",
     "-Wno-unused-variable",
     "-Wno-unused-but-set-variable",
     "-march=native",
@@ -82,15 +86,53 @@ def resolve_ref(version: str | None) -> str:
 
     Raises:
         MAGEMinDownloadError: `version` is `None` and the latest-release
-            lookup fails (see `_latest_release_ref`).
+            lookup fails (see `_latest_release_ref`), or `version` is an
+            `X.Y.Z` release older than `MIN_MAGEMIN_VERSION`.
     """
     if version is None:
         return _latest_release_ref()
     if version == "latest":
         return "main"
     if _SEMVER_RE.fullmatch(version):
+        _check_min_version(tuple(int(part) for part in version.split(".")), version)
         return f"v{version}"
     return version
+
+
+def _check_min_version(found: tuple[int, ...], label: str) -> None:
+    """Raise `MAGEMinDownloadError` if `found` is older than `MIN_MAGEMIN_VERSION`."""
+    if found < MIN_MAGEMIN_VERSION:
+        minimum = ".".join(str(part) for part in MIN_MAGEMIN_VERSION)
+        raise MAGEMinDownloadError(
+            f"MAGEMin {label} is not supported: this package requires MAGEMin >= {minimum} "
+            "(older versions are not thread-safe with magemin_ext)."
+        )
+
+
+def _check_source_version(src_dir: Path) -> None:
+    """Check the version string in a MAGEMin source tree's `src/initialize.c`.
+
+    Warns (rather than failing) if the version can't be determined, so unusual
+    branches/forks still build.
+
+    Raises:
+        MAGEMinDownloadError: The tree's version is older than `MIN_MAGEMIN_VERSION`.
+    """
+    init_c = src_dir / "src" / "initialize.c"
+    try:
+        match = _SOURCE_VERSION_RE.search(init_c.read_text(errors="replace"))
+    except OSError:
+        match = None
+    if match is None:
+        warnings.warn(
+            f"Could not determine the MAGEMin version from {init_c}; "
+            "building anyway, but versions older than "
+            f"{'.'.join(str(part) for part in MIN_MAGEMIN_VERSION)} are unsupported.",
+            stacklevel=3,
+        )
+        return
+    found = tuple(int(part) for part in match.groups())
+    _check_min_version(found, ".".join(match.groups()))
 
 
 def _latest_release_ref() -> str:
@@ -322,9 +364,11 @@ def build(
         `src_dir / "libMAGEMin.<ext>"`.
 
     Raises:
-        MAGEMinDownloadError: `make`/`cc` is not on `PATH`, or any build step
-            (`make clean`, `make lib`, compiling `magemin_ext.c`, or the
-            final link) exits non-zero.
+        MAGEMinDownloadError: The source tree's version (read from
+            `src/initialize.c`) is older than `MIN_MAGEMIN_VERSION`,
+            `make`/`cc` is not on `PATH`, or any build step (`make clean`,
+            `make lib`, compiling `magemin_ext.c`, or the final link) exits
+            non-zero.
 
     Note:
         The Windows/MSYS2 defaults (`inc`/`libs`/`.dll` output) are designed
@@ -335,6 +379,7 @@ def build(
         `cc`/`inc`/`libs` explicitly if your MSYS2 layout differs.
     """
     src_dir = Path(src_dir)
+    _check_source_version(src_dir)
     system = platform.system()
     cc = cc or os.environ.get("CC") or "gcc"
     inc = inc if inc is not None else _INC_DEFAULTS.get(system, "")
@@ -380,7 +425,7 @@ def build(
 
     objects = sorted(str(p) for p in (src_dir / "src").rglob("*.o"))
     out = src_dir / f"libMAGEMin.{ext}"
-    link_cmd = [cc, "-shared", "-fPIC", "-pthread", "-o", str(out), *objects, str(ext_o)]
+    link_cmd = [cc, "-shared", "-fPIC", "-o", str(out), *objects, str(ext_o)]
     if inc:
         link_cmd += shlex.split(inc)
     if libs:

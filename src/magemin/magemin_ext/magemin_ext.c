@@ -17,21 +17,18 @@
  **   to expose a hook for it. Keep these in sync with MAGEMin_api.c's own
  **   MAGEMin_Init/MAGEMin_ComputeEquilibrium if that file's sequence changes.
  **
- **   g_hash_lock (below) exists because MAGEMin/src/hash_init.h declares its
- **   EM/DEW/PP endmember-lookup tables as plain process-wide globals, rebuilt
- **   with no lock in InitializeDatabases and read with no lock throughout the
- **   compute path -- not per-handle state, and not something a fix inside
- **   MAGEMin/ itself would be allowed to touch. This lock serializes the
- **   write side (MAGEMin_InitEx) against the read side (the entirety of
- **   MAGEMin_ComputeEquilibriumEx, since the lookups are reached at multiple
- **   points throughout it) so that multi_point_minimization's thread pool --
- **   many concurrent handles for one database -- is actually safe.
+ **   Thread safety relies on MAGEMin >= 2.0.6, whose hash_init.h keeps its
+ **   endmember/DEW lookup tables in an append-only registry keyed on
+ **   (research_group, EM_dataset) and published with atomics, so concurrent
+ **   handles -- for the same or different databases -- never race on them.
+ **   Older versions rebuilt one process-wide table on every init with no
+ **   lock; this extension no longer guards against that, which is why the
+ **   build refuses MAGEMin < 2.0.6.
  @*/
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <pthread.h>
 
 #include "toolkit.h"
 #include "initialize.h"
@@ -40,8 +37,6 @@
 #include "MAGEMin_api.h"
 
 #include "magemin_ext.h"
-
-static pthread_rwlock_t g_hash_lock = PTHREAD_RWLOCK_INITIALIZER;
 
 MAGEMin_Handle *MAGEMin_InitEx(	const char *database,
 									const char *research_group,
@@ -90,11 +85,6 @@ MAGEMin_Handle *MAGEMin_InitEx(	const char *database,
 	}
 	strcpy(h->gv.db,database);
 
-	/* write-side of the EM/DEW/PP global tables (see g_hash_lock comment
-	   above) -- exclusive against every other InitEx call and every
-	   ComputeEquilibriumEx read */
-	pthread_rwlock_wrlock(&g_hash_lock);
-
 	h->gv = SetupDatabase(				h->gv,
 									   &h->z_b					);
 
@@ -108,8 +98,6 @@ MAGEMin_Handle *MAGEMin_InitEx(	const char *database,
 										 h->gv					);
 	init_simplex_B_em(					&h->splx_data,
 										 h->gv					);
-
-	pthread_rwlock_unlock(&g_hash_lock);
 
 	return h;
 }
@@ -165,14 +153,6 @@ stb_system *MAGEMin_ComputeEquilibriumEx(	MAGEMin_Handle  *h,
 		return NULL;
 	}
 	strcpy(h->gv.sys_in,sys_in);
-
-	/* read-side of the EM/DEW/PP global tables (see g_hash_lock comment at
-	   the top of this file) -- reached not just by ComputeG0_point below but
-	   also by ComputePostProcessing and fill_output_struct's DEW path, so
-	   this covers the rest of the function rather than just its start; any
-	   number of threads can hold this concurrently, only InitEx is exclusive
-	   against it */
-	pthread_rwlock_rdlock(&g_hash_lock);
 
 	h->z_b.P = P;
 	h->z_b.T = T + 273.15;
@@ -274,7 +254,6 @@ stb_system *MAGEMin_ComputeEquilibriumEx(	MAGEMin_Handle  *h,
 		}
 		if (!found){
 			printf(" MAGEMin_ComputeEquilibriumEx error: unknown phase name '%s' to suppress\n",name);
-			pthread_rwlock_unlock(&g_hash_lock);
 			return NULL;
 		}
 	}
@@ -307,8 +286,6 @@ stb_system *MAGEMin_ComputeEquilibriumEx(	MAGEMin_Handle  *h,
 										h->DB.SS_ref_db,
 										h->DB.cp,
 										h->DB.sp				);
-
-	pthread_rwlock_unlock(&g_hash_lock);
 
 	return &h->DB.sp[0];
 }
