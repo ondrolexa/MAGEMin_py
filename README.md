@@ -188,7 +188,7 @@ phase suppression and the `sb` databases. It does **not** support:
 
 All thermodynamic modeling is done by [`MAGEMin`](https://github.com/ComputationalThermodynamics/MAGEMin)
 itself; this package only adds a Python interface around it. `MAGEMin` is developed by Nicolas
-Riel and Boris Kaus (Johannes Gutenberg University Mainz), with Erik C. R. Green and Nathan
+Riel and Boris Kaus (Johannes Gutenberg University Mainz), with Eleanor C. R. Green and Nicolas
 Berlie. If you use `magemin` in published work, please cite the original `MAGEMin` paper:
 
 > Riel N., Kaus B.J.P., Green E.C.R., Berlie N. (2022). MAGEMin, an Efficient Gibbs Energy
