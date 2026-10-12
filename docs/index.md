@@ -4,16 +4,14 @@ Python interface to [MAGEMin](https://github.com/ComputationalThermodynamics/MAG
 package that performs Gibbs energy minimization to compute the thermodynamically most stable
 mineral assemblage for a given bulk-rock composition and pressure/temperature condition.
 
-## Relation to MAGEMin / MAGEMin_C.jl
+## Relation to MAGEMin
 
 `magemin` wraps MAGEMin's own official C API (`MAGEMin_api.h`) via
 [`ctypes`](https://docs.python.org/3/library/ctypes.html) -- a small, stable surface intended by
 upstream for external C/C++ callers: init/compute/free, oxide and phase names, solver choice,
 oxygen-buffer/fixed-activity constraints, and phase suppression, for every database including
 `sb` (Stixrude & Lithgow-Bertelloni). The package contains no C code of its own and loads the
-official prebuilt MAGEMin library (see [Installation](installation.md)). The upstream Julia
-bindings, [`MAGEMin_C.jl`](https://github.com/ComputationalThermodynamics/MAGEMin_C.jl), serve
-only as a reference for API shape and behavior.
+official prebuilt MAGEMin library (see [Installation](installation.md)).
 
 Concretely, this means `magemin`:
 
@@ -96,18 +94,15 @@ worked example end to end.
 
 ## Scope and limitations
 
-This package wraps MAGEMin's C API (`MAGEMin_api.h`). It does **not** support (all of which `MAGEMin_C.jl` does, via its much larger internal-API bindings):
+This package wraps MAGEMin's C API (`MAGEMin_api.h`). It does **not** support:
 
 - Predefined bulk-rock compositions beyond the small hand-curated set in `bulk_rocks` (no lookup of
   MAGEMin's full internal `--test` composition tables)
-- Fractional crystallization / PT-path drivers (build one yourself with repeated `compute()` calls,
-  as `MAGEMin_C.jl`'s own examples do)
+- Fractional crystallization / PT-path drivers (build one yourself with repeated `compute()`
+  calls)
 - Trace-element partitioning, melt-viscosity, or volatile-saturation post-processing models
 - MPI-based multi-node parallelism (this package parallelizes with a thread pool instead, see
   `multi_point_minimization`)
-
-If you need any of these, see
-[`MAGEMin_C.jl`](https://github.com/ComputationalThermodynamics/MAGEMin_C.jl).
 
 ## License
 

@@ -819,7 +819,7 @@ class EquilibriumResult:
         )
 
     def __str__(self) -> str:
-        """Return a human-readable summary, similar to MAGEMin_C.jl's ``print_info``."""
+        """Return a human-readable summary of the equilibrium result."""
         lines = [
             f"Pressure          : {self.p:g} [kbar]",
             f"Temperature       : {self.t - 273.15:g} [Celsius]",
