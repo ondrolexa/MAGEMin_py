@@ -545,12 +545,12 @@ def test_jll_dependency_ref_follows_exact_pin_only(monkeypatch: pytest.MonkeyPat
     assert _download._jll_dependency_ref("OpenBLAS32_jll", compat) == "main"
 
 
-def _jll_tarball(path: Path, files: dict[str, bytes]) -> bytes:
-    """A jll-style tarball (lib/...) holding `files`; returns its bytes."""
+def _jll_tarball(path: Path, files: dict[str, bytes], prefix: str = "lib") -> bytes:
+    """A jll-style tarball (`prefix`/..., ``bin`` on Windows) holding `files`; returns its bytes."""
     buffer = io.BytesIO()
     with tarfile.open(fileobj=buffer, mode="w:gz") as tf:
         for name, data in files.items():
-            info = tarfile.TarInfo(f"lib/{name}")
+            info = tarfile.TarInfo(f"{prefix}/{name}")
             info.size = len(data)
             tf.addfile(info, io.BytesIO(data))
     path.write_bytes(buffer.getvalue())
@@ -615,6 +615,34 @@ def test_install_binary_flattens_runtime_libraries(fake_jll: _FakeJll, tmp_path:
     installed = sorted(p.name for p in (tmp_path / "bin").iterdir())
     assert installed == ["libMAGEMin.so", "libgfortran.so.5", "libnlopt.so.0", "libopenblas.so"]
     assert not (tmp_path / "cache" / "current.txt").exists()  # explicit dest: no marker
+
+
+def test_install_binary_layout_follows_host_not_interpreter(
+    fake_jll: _FakeJll, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The artifacts' lib/ vs bin/ layout comes from the resolved host platform, not from
+    # sys.platform -- a Linux host on a Windows interpreter (as faked here, and as on the
+    # Windows CI runner) must still find the lib/ tarballs' libraries.
+    monkeypatch.setattr(_download.sys, "platform", "win32")
+    _download.install_binary(dest=tmp_path / "bin")
+    assert (tmp_path / "bin" / "libMAGEMin.so").exists()
+
+
+def test_install_artifact_windows_layout_uses_bin(tmp_path: Path) -> None:
+    import hashlib
+
+    data = _jll_tarball(tmp_path / "w.tgz", {"libMAGEMin.dll": b"dll"}, prefix="bin")
+    download = {"url": "https://example.invalid/w.tgz", "sha256": hashlib.sha256(data).hexdigest()}
+    dest = tmp_path / "dest"
+    dest.mkdir()
+
+    def fake_fetch(url: str, dest_file: Path, **kwargs: object) -> None:
+        dest_file.write_bytes(data)
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(_download, "_fetch", fake_fetch)
+        _download._install_artifact(download, dest, {"os": "windows"}, main=True, verbose=False)
+    assert [p.name for p in dest.iterdir()] == ["libMAGEMin.dll"]
 
 
 def test_install_binary_default_dest_writes_marker(fake_jll: _FakeJll, tmp_path: Path) -> None:

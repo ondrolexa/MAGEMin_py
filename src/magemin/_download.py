@@ -570,8 +570,14 @@ def _jll_dependency_ref(repo: str, compat: dict[str, str]) -> str:
     return "main"
 
 
-def _install_artifact(download: dict, dest: Path, *, main: bool, verbose: bool) -> None:
-    """Download, verify and unpack one jll tarball, copying its runtime libraries into `dest`."""
+def _install_artifact(
+    download: dict, dest: Path, host: dict[str, str], *, main: bool, verbose: bool
+) -> None:
+    """Download, verify and unpack one jll tarball, copying its runtime libraries into `dest`.
+
+    `host` (from `_host_platform`) decides the tarball's layout: Windows artifacts keep their
+    DLLs in ``bin/``, every other platform in ``lib/``.
+    """
     with tempfile.TemporaryDirectory() as tmp_str:
         tmp = Path(tmp_str)
         archive = tmp / "artifact.tar.gz"
@@ -585,7 +591,7 @@ def _install_artifact(download: dict, dest: Path, *, main: bool, verbose: bool) 
             )
         with tarfile.open(archive, "r:gz") as tf:
             tf.extractall(tmp / "x", filter="data")
-        lib_dir = tmp / "x" / ("bin" if sys.platform == "win32" else "lib")
+        lib_dir = tmp / "x" / ("bin" if host["os"] == "windows" else "lib")
         prefixes = ("libMAGEMin.",) if main else _RUNTIME_LIBRARY_PREFIXES
         for path in sorted(lib_dir.glob("*")) if lib_dir.is_dir() else []:
             if path.name.startswith(prefixes) and not path.is_dir():
@@ -659,9 +665,9 @@ def install_binary(
             if repo not in project.get("deps", {}):
                 continue
             download = _jll_artifact(repo, _jll_dependency_ref(repo, compat), host)
-            _install_artifact(download, dest, main=False, verbose=verbose)
+            _install_artifact(download, dest, host, main=False, verbose=verbose)
         download = _jll_artifact(_MAGEMIN_JLL, ref, host)
-        _install_artifact(download, dest, main=True, verbose=verbose)
+        _install_artifact(download, dest, host, main=True, verbose=verbose)
 
     _check_loadable(lib_path, resolved)
     if not explicit_dest:
