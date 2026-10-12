@@ -76,7 +76,9 @@ class SolutionPhase:
     Attributes:
         n_ox: Number of oxide/system components in this phase's composition
             arrays.
-        f: Phase fraction (mol), relative to the other stable phases.
+        f: Normalization factor of the phase's formula (MAGEMin's internal
+            `factor`), **not** its proportion -- use the parent
+            `EquilibriumResult.ph_frac`/`ph_frac_wt`/`ph_frac_vol` instead.
         g: Gibbs energy of the phase.
         delta_g: Gibbs energy relative to the stable assemblage (driving
             force / undersaturation).
@@ -102,9 +104,9 @@ class SolutionPhase:
             this solution model.
         n_em: Number of endmembers.
         n_sf: Number of site fractions.
-        comp: Bulk oxide composition of the phase (mol), length `n_ox`, in
-            the parent `EquilibriumResult.oxides` order.
-        comp_wt: Same as `comp`, in wt%.
+        comp: Oxide composition of the phase as mol fractions (summing to 1),
+            length `n_ox`, in the parent `EquilibriumResult.oxides` order.
+        comp_wt: Same as `comp`, as wt fractions (summing to 1; x100 for wt%).
         comp_apfu: Same as `comp`, in atoms per formula unit.
         comp_variables: Values of the compositional (order) variables,
             length `n_xeos`.
@@ -115,9 +117,9 @@ class SolutionPhase:
         em_frac: Endmember mol fractions, length `n_em`.
         em_frac_wt: Endmember wt fractions, length `n_em`.
         em_chem_pot: Endmember chemical potentials, length `n_em`.
-        em_comp: Oxide composition of each endmember (mol), shape
+        em_comp: Oxide composition of each endmember (mol fractions), shape
             `(n_em, n_ox)`.
-        em_comp_wt: Same as `em_comp`, in wt%.
+        em_comp_wt: Same as `em_comp`, as wt fractions.
         em_comp_apfu: Same as `em_comp`, in atoms per formula unit.
         molality: Per-endmember molality, in mol/kg H2O, length `n_em`.
             DEW-only; empty otherwise.
@@ -276,7 +278,9 @@ class PurePhase:
 
     Attributes:
         n_ox: Number of oxide components.
-        f: Phase fraction (mol), relative to the other stable phases.
+        f: Normalization factor of the phase's formula (MAGEMin's internal
+            `factor`), **not** its proportion -- use the parent
+            `EquilibriumResult.ph_frac`/`ph_frac_wt`/`ph_frac_vol` instead.
         g: Gibbs energy of the phase.
         delta_g: Gibbs energy relative to the stable assemblage.
         v: Molar volume.
@@ -290,8 +294,8 @@ class PurePhase:
         shear_mod: Shear modulus.
         vp: P-wave seismic velocity.
         vs: S-wave seismic velocity.
-        comp: Oxide composition (mol), length `n_ox`.
-        comp_wt: Same as `comp`, in wt%.
+        comp: Oxide composition as mol fractions (summing to 1), length `n_ox`.
+        comp_wt: Same as `comp`, as wt fractions (summing to 1; x100 for wt%).
         comp_apfu: Same as `comp`, in atoms per formula unit.
     """
 
@@ -498,8 +502,9 @@ class EquilibriumResult:
             reports back in Kelvin here, i.e. `t == T_celsius + 273.15`).
         x: Reserved/generic composition variable, not used by this minimal
             API.
-        bulk: Input bulk composition (mol), length `n_ox`.
-        bulk_wt: Input bulk composition (wt%), length `n_ox`.
+        bulk: Input bulk composition, normalized to mol fractions (summing to
+            1), length `n_ox`.
+        bulk_wt: Same as `bulk`, as wt fractions.
         buffer: Active oxygen-buffer/fixed-activity constraint name (as passed
             to `compute()`'s `buffer` argument), or `"none"` if unset.
         buffer_n: Buffer offset / fixed-activity value associated with
@@ -537,35 +542,40 @@ class EquilibriumResult:
         vs_s: Solid-only S-wave seismic velocity.
         vp: Whole-system P-wave seismic velocity.
         vs: Whole-system S-wave seismic velocity.
-        bulk_s: Solid sub-system bulk composition (mol), length `n_ox`.
-        frac_s: Solid sub-system mass fraction.
+        bulk_s: Solid sub-system composition as mol fractions, length `n_ox`
+            (`oxides` order -- usable directly as a new `bulk` with `sys_in="mol"`).
+        frac_s: Solid sub-system fraction, mol basis.
         rho_s: Solid sub-system density.
-        bulk_m: Melt sub-system bulk composition (mol), length `n_ox`.
-        frac_m: Melt sub-system mass fraction.
+        bulk_m: Melt sub-system composition as mol fractions, length `n_ox`
+            (`oxides` order -- usable directly as a new `bulk` with `sys_in="mol"`).
+        frac_m: Melt sub-system fraction, mol basis.
         rho_m: Melt sub-system density.
-        bulk_f: Fluid sub-system bulk composition (mol), length `n_ox`.
-        frac_f: Fluid sub-system mass fraction.
+        bulk_f: Fluid sub-system composition as mol fractions, length `n_ox`
+            (`oxides` order -- usable directly as a new `bulk` with `sys_in="mol"`).
+        frac_f: Fluid sub-system fraction, mol basis.
         rho_f: Fluid sub-system density.
         entropy_s: Solid sub-system entropy.
         entropy_m: Melt sub-system entropy.
         entropy_f: Fluid sub-system entropy.
-        bulk_s_wt: Solid sub-system bulk composition (wt%), length `n_ox`.
+        bulk_s_wt: Same as `bulk_s`, as wt fractions.
         frac_s_wt: Solid sub-system mass fraction, wt basis.
         frac_s_vol: Solid sub-system volume fraction.
-        bulk_m_wt: Melt sub-system bulk composition (wt%), length `n_ox`.
+        bulk_m_wt: Same as `bulk_m`, as wt fractions.
         frac_m_wt: Melt sub-system mass fraction, wt basis.
         frac_m_vol: Melt sub-system volume fraction.
-        bulk_f_wt: Fluid sub-system bulk composition (wt%), length `n_ox`.
+        bulk_f_wt: Same as `bulk_f`, as wt fractions.
         frac_f_wt: Fluid sub-system mass fraction, wt basis.
         frac_f_vol: Fluid sub-system volume fraction.
         n_ph: Total number of stable phases.
         n_pp: Number of stable pure phases.
         n_ss: Number of stable solution phases.
         n_mss: Number of metastable solution (pseudocompound) entries.
-        ph: Stable phase names, length `n_ph`.
+        ph: Stable phase names, length `n_ph`. With an active `buffer`, includes
+            the buffer itself (e.g. `"qfm"`, `"aH2O"`) as a near-zero-fraction
+            pure phase.
         sol_name: Underlying solution-model name for each phase in `ph`,
             length `n_ph`.
-        ph_frac: Phase fractions, mol basis, length `n_ph`.
+        ph_frac: Phase fractions (summing to 1), mol basis, length `n_ph`.
         ph_frac_wt: Phase fractions, wt basis, length `n_ph`.
         ph_frac_1at: Phase fractions, normalized per atom, length `n_ph`.
         ph_frac_vol: Phase fractions, volume basis, length `n_ph`.

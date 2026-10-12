@@ -57,6 +57,18 @@ for phase in result.metastable_phases:  # magemin.results.MetastableSolutionPhas
     print(phase.ph_name, phase.g_ppc)
 ```
 
+`result.ph[i]`'s detail object is `result.solution_phases[result.ph_id[i]]` when
+`result.ph_type[i] == 1`, else `result.pure_phases[result.ph_id[i]]` -- the detail tuples are not in
+`ph` order. Phase proportions are `result.ph_frac`/`ph_frac_wt`/`ph_frac_vol` (indexed like `ph`);
+the per-phase `f` attribute is a formula-normalization factor, not a proportion. All compositions
+(`comp`, `comp_wt`, `bulk`, `bulk_m`, ...) are fractions summing to 1, not percentages:
+
+```python
+for name, kind, idx, frac in zip(result.ph, result.ph_type, result.ph_id, result.ph_frac_wt):
+    phase = result.solution_phases[idx] if kind == 1 else result.pure_phases[idx]
+    print(name, frac, dict(zip(result.oxides, phase.comp_wt)))
+```
+
 See the [Results API reference](api/results.md) for every attribute on
 [`EquilibriumResult`][magemin.results.EquilibriumResult],
 [`SolutionPhase`][magemin.results.SolutionPhase],
@@ -80,12 +92,25 @@ result = mg.compute(P=8, T=800, bulk=bulk_rocks.KLB1_IG, buffer="cco", buffer_va
 print(result.buffer, result.buffer_n, result.f_o2)
 
 # Fixed activity: buffer_value IS the activity value itself, in (0, 1)
-result = mg.compute(P=8, T=800, bulk=bulk_rocks.KLB1_IG, buffer="aH2O", buffer_value=0.5)
+bulk = list(bulk_rocks.KLB1_IG.values)
+bulk[mg.oxide_names.index("H2O")] = 5.0  # excess H2O, see below
+result = mg.compute(P=8, T=800, bulk=bulk, sys_in="mol", buffer="aH2O", buffer_value=0.5)
+print(result.ph, result.a_h2o)  # (..., 'aH2O') 0.5
 ```
 
 Redox buffers: `O2`, `qfm`, `mw`, `qif`, `nno`, `hm`, `iw`, `cco`. Fixed-activity constraints: `aH2O`,
 `aO2`, `aMgO`, `aFeO`, `aAl2O3`, `aTiO2`. Not every name is available for every database -- an
 unavailable-but-recognized name raises [`MAGEMinComputeError`][magemin.errors.MAGEMinComputeError].
+`O2` is special: it is pure O2 at 1 bar, and its `buffer_value` is ignored.
+
+!!! warning "The bulk needs an excess of the buffered component"
+    A buffer is an extra pure phase that exchanges the buffered component with the system -- O for
+    redox buffers, H2O for `aH2O`, MgO for `aMgO`, and so on. It only holds while that phase is
+    part of the stable assemblage, so the bulk must contain *more* of the component than the
+    buffered rock needs (e.g. raise `O` to reach an oxidizing buffer such as `hm` or `nno`, or add
+    H2O for `aH2O`). When it holds, the buffer appears in `result.ph` with a near-zero fraction
+    (drop it before reporting the assemblage). When it doesn't, the result is simply the
+    unbuffered equilibrium, and `compute()` issues a `UserWarning`.
 
 ## Suppressing phases
 

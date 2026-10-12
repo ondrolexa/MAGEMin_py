@@ -7,6 +7,21 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- `MAGEMin.compute()` issues a `UserWarning` when a `buffer` is requested but its buffer phase is
+  not part of the stable assemblage (the bulk lacks an excess of the buffered component), i.e. the
+  result is not actually buffered. `"O2"` (pure O2 at 1 bar) is exempt.
+
+### Fixed
+
+- Docstrings: `SolutionPhase.f`/`PurePhase.f` are a formula-normalization factor, not a phase
+  proportion; compositions (`comp`, `comp_wt`, `bulk`, `bulk_wt`, `bulk_s/m/f`, ...) are fractions
+  summing to 1, not wt%/absolute moles; `frac_s/m/f` are mol-basis fractions.
+- `docs/usage.md`: the buffer section explains the excess-component requirement and that an active
+  buffer is listed in `ph`; its `aH2O` example now uses a bulk with excess H2O (the previous dry
+  KLB1 example was not actually buffered). Added how to map `ph[i]` to its detail object.
+
 ## [0.1.0] - 2026-10-12
 
 First public release.

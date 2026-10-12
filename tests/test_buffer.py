@@ -16,13 +16,46 @@ def test_redox_buffer_cco(ig: MAGEMin) -> None:
     assert result.g == pytest.approx(-797.7943373560247, abs=1e-3)
 
 
+def _wet_klb1(ig: MAGEMin, h2o: float = 5.0) -> list[float]:
+    bulk = list(bulk_rocks.KLB1_IG.values)
+    bulk[ig.oxide_names.index("H2O")] = h2o
+    return bulk
+
+
 def test_activity_buffer_ah2o(ig: MAGEMin) -> None:
-    """A fixed-activity buffer (aH2O, activity 0.5) is echoed back correctly."""
-    result = ig.compute(P=8, T=800, bulk=bulk_rocks.KLB1_IG, buffer="aH2O", buffer_value=0.5)
+    """A fixed-activity buffer (aH2O, activity 0.5) holds when the bulk has excess H2O."""
+    result = ig.compute(
+        P=8, T=800, bulk=_wet_klb1(ig), sys_in="mol", buffer="aH2O", buffer_value=0.5
+    )
 
     assert result.status == 0
     assert result.buffer == "aH2O"
     assert result.buffer_n == pytest.approx(0.5)
+    assert "aH2O" in result.ph
+    assert result.a_h2o == pytest.approx(0.5)
+
+
+def test_redox_buffer_phase_is_reported(ig: MAGEMin) -> None:
+    """An active redox buffer appears in `ph` and pins dQFM to its offset."""
+    result = ig.compute(P=8, T=800, bulk=bulk_rocks.KLB1_IG, buffer="qfm", buffer_value=-1.0)
+
+    assert "qfm" in result.ph
+    assert result.d_qfm == pytest.approx(-1.0, abs=1e-3)
+
+
+def test_unsaturated_buffer_warns(ig: MAGEMin) -> None:
+    """A buffer missing from the assemblage (dry bulk for aH2O) warns that it did not hold."""
+    with pytest.warns(UserWarning, match="not buffered"):
+        result = ig.compute(
+            P=8, T=800, bulk=_wet_klb1(ig, 0.0), sys_in="mol", buffer="aH2O", buffer_value=0.5
+        )
+    assert "aH2O" not in result.ph
+
+
+def test_no_warning_without_buffer(ig: MAGEMin, recwarn: pytest.WarningsRecorder) -> None:
+    ig.compute(P=8, T=800, bulk=bulk_rocks.KLB1_IG)
+    ig.compute(P=8, T=800, bulk=bulk_rocks.KLB1_IG, buffer="cco", buffer_value=-1.0)
+    assert not [w for w in recwarn if issubclass(w.category, UserWarning)]
 
 
 def test_buffer_does_not_leak_across_calls(ig: MAGEMin) -> None:

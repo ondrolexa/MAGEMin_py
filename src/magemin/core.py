@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ctypes
 import os
+import warnings
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
 from typing import Literal, NamedTuple
@@ -235,7 +236,13 @@ class MAGEMin:
                 none. Must be given together with `buffer_value`. This is
                 re-applied (or explicitly cleared) on every `compute()` call
                 -- it never silently carries over from a previous call on
-                this same instance.
+                this same instance. The buffer acts as an extra pure phase
+                that exchanges the buffered component (O for redox buffers,
+                e.g. H2O for "aH2O") with the system, so `bulk` must contain
+                an excess of that component: when the buffer holds, its name
+                appears in the result's `ph` with a near-zero fraction;
+                otherwise the result is not buffered and a `UserWarning` is
+                issued. "O2" is pure O2 at 1 bar (`buffer_value` is ignored).
             buffer_value: For a redox `buffer`, an additive log-unit offset
                 (e.g. dQFM-style, can be negative, unclamped). For a
                 fixed-activity `buffer`, the activity value itself, in
@@ -371,12 +378,24 @@ class MAGEMin:
             kkt_ptr = self._lib.MAGEMin_GetFinalNewtonSystem(self._handle)
             if kkt_ptr:
                 final_newton_system = FinalNewtonSystem._from_c(kkt_ptr.contents, self._n_oxides)
-        return EquilibriumResult._from_c(
+        result = EquilibriumResult._from_c(
             result_ptr.contents,
             light=light,
             name_solvus=name_solvus,
             final_newton_system=final_newton_system,
         )
+        # A buffer only constrains the system while its pure phase is part of the stable
+        # assemblage, which needs an excess of the buffered component in the bulk. "O2" is
+        # excluded: it is pure O2 at 1 bar, only stable at extreme oxidation.
+        if buffer is not None and buffer != "O2" and buffer not in result.ph:
+            warnings.warn(
+                f"buffer {buffer!r} is not part of the stable assemblage at P={P}, T={T}, so "
+                "the result is not buffered; increase the buffered component (O for redox "
+                "buffers, e.g. H2O for 'aH2O') in the bulk composition",
+                UserWarning,
+                stacklevel=2,
+            )
+        return result
 
     def close(self) -> None:
         """Free the underlying MAGEMin handle. Safe to call more than once."""
