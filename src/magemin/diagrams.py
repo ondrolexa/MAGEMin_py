@@ -10,6 +10,7 @@ MAGEMin_C.jl's `AMR.jl`.
 
 from __future__ import annotations
 
+import functools
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal
@@ -102,6 +103,10 @@ class PhaseDiagram:
         solver: The `solver` this diagram was computed with. Used by
             `refine()` so newly computed points stay consistent with the
             rest of the diagram.
+        optimizer: The `optimizer` this diagram was computed with, reused by `refine()`
+            like `solver`.
+        final_newton_step: The `final_newton_step` this diagram was computed with, reused
+            by `refine()` like `solver`.
     """
 
     kind: Literal["PT", "PX", "TX"]
@@ -123,6 +128,8 @@ class PhaseDiagram:
     # bulk/buffer/suppress_phases/etc, none of which are otherwise retained on
     # this dataclass) needed to compute further points in refine().
     _mapping: _diagrams._AxisMapping = field(repr=False)
+    optimizer: int = 0
+    final_newton_step: bool = True
 
     def __str__(self) -> str:
         """Return a human-readable summary."""
@@ -161,6 +168,8 @@ class PhaseDiagram:
         initial_resolution: int,
         max_depth: int,
         solver: int,
+        optimizer: int,
+        final_newton_step: bool,
         n_components: int,
         leaves: list[_diagrams._ResolvedCell],
         cache: dict[_LatticePoint, EquilibriumResult],
@@ -200,6 +209,8 @@ class PhaseDiagram:
             initial_resolution=initial_resolution,
             solver=solver,
             _mapping=mapping,
+            optimizer=optimizer,
+            final_newton_step=final_newton_step,
         )
 
     @classmethod
@@ -220,6 +231,8 @@ class PhaseDiagram:
         max_workers: int | None,
         verbose: bool,
         solver: int,
+        optimizer: int,
+        final_newton_step: bool,
     ) -> PhaseDiagram:
         with MAGEMin(database, solver=solver) as mg:
             n_components = mg.n_oxides
@@ -232,7 +245,11 @@ class PhaseDiagram:
             max_workers=max_workers,
             verbose=verbose,
             solver=solver,
-            batch_fn=multi_point_minimization,
+            batch_fn=functools.partial(
+                multi_point_minimization,
+                optimizer=optimizer,
+                final_newton_step=final_newton_step,
+            ),
         )
         return cls._from_leaves(
             kind=kind,
@@ -247,6 +264,8 @@ class PhaseDiagram:
             initial_resolution=initial_resolution,
             max_depth=max_depth,
             solver=solver,
+            optimizer=optimizer,
+            final_newton_step=final_newton_step,
             n_components=n_components,
             leaves=leaves,
             cache=cache,
@@ -271,6 +290,8 @@ class PhaseDiagram:
         max_workers: int | None = None,
         verbose: bool = False,
         solver: int = 2,
+        optimizer: int = 0,
+        final_newton_step: bool = True,
     ) -> PhaseDiagram:
         """Compute an adaptive pressure-temperature diagram at fixed bulk composition.
 
@@ -297,6 +318,8 @@ class PhaseDiagram:
             max_workers: As for `multi_point_minimization`.
             verbose: As for `multi_point_minimization`.
             solver: As for `MAGEMin.__init__`.
+            optimizer: As for `MAGEMin.__init__`.
+            final_newton_step: As for `MAGEMin.__init__`.
 
         Returns:
             The computed diagram.
@@ -327,6 +350,8 @@ class PhaseDiagram:
             max_workers=max_workers,
             verbose=verbose,
             solver=solver,
+            optimizer=optimizer,
+            final_newton_step=final_newton_step,
         )
 
     @classmethod
@@ -349,6 +374,8 @@ class PhaseDiagram:
         max_workers: int | None = None,
         verbose: bool = False,
         solver: int = 2,
+        optimizer: int = 0,
+        final_newton_step: bool = True,
     ) -> PhaseDiagram:
         """Compute an adaptive pressure-composition diagram at fixed temperature.
 
@@ -375,6 +402,8 @@ class PhaseDiagram:
             max_workers: As for `multi_point_minimization`.
             verbose: As for `multi_point_minimization`.
             solver: As for `MAGEMin.__init__`.
+            optimizer: As for `MAGEMin.__init__`.
+            final_newton_step: As for `MAGEMin.__init__`.
 
         Returns:
             The computed diagram.
@@ -406,6 +435,8 @@ class PhaseDiagram:
             max_workers=max_workers,
             verbose=verbose,
             solver=solver,
+            optimizer=optimizer,
+            final_newton_step=final_newton_step,
         )
 
     @classmethod
@@ -428,6 +459,8 @@ class PhaseDiagram:
         max_workers: int | None = None,
         verbose: bool = False,
         solver: int = 2,
+        optimizer: int = 0,
+        final_newton_step: bool = True,
     ) -> PhaseDiagram:
         """Compute an adaptive temperature-composition diagram at fixed pressure.
 
@@ -454,6 +487,8 @@ class PhaseDiagram:
             max_workers: As for `multi_point_minimization`.
             verbose: As for `multi_point_minimization`.
             solver: As for `MAGEMin.__init__`.
+            optimizer: As for `MAGEMin.__init__`.
+            final_newton_step: As for `MAGEMin.__init__`.
 
         Returns:
             The computed diagram.
@@ -485,6 +520,8 @@ class PhaseDiagram:
             max_workers=max_workers,
             verbose=verbose,
             solver=solver,
+            optimizer=optimizer,
+            final_newton_step=final_newton_step,
         )
 
     def plot(
@@ -902,7 +939,11 @@ class PhaseDiagram:
             max_workers=max_workers,
             verbose=verbose,
             solver=self.solver,
-            batch_fn=multi_point_minimization,
+            batch_fn=functools.partial(
+                multi_point_minimization,
+                optimizer=self.optimizer,
+                final_newton_step=self.final_newton_step,
+            ),
             initial_cache=initial_cache,
         )
         return PhaseDiagram._from_leaves(
@@ -918,6 +959,8 @@ class PhaseDiagram:
             initial_resolution=self.initial_resolution,
             max_depth=new_max_depth,
             solver=self.solver,
+            optimizer=self.optimizer,
+            final_newton_step=self.final_newton_step,
             n_components=self.n_components,
             leaves=leaves,
             cache=cache,

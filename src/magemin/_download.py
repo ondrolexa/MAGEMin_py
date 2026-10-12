@@ -1,25 +1,28 @@
-"""Download and build the MAGEMin C library from GitHub.
+"""Install the MAGEMin C library: prebuilt binaries, or a source build.
 
 Private module: public functions (`install`, `default_cache_dir`) are re-exported at the
-top-level ``magemin`` package. Provides an alternative to ``scripts/build_lib.sh`` for
-obtaining a buildable ``MAGEMin/`` source tree without git-vendoring it into this repo --
-useful for a future non-monorepo install. Stdlib-only (``urllib.request``, ``tarfile``,
-``subprocess``, ``platform``), no runtime dependency added.
+top-level ``magemin`` package. By default `install` fetches the official prebuilt
+``MAGEMin_jll`` binaries (built by Julia's Yggdrasil for every major platform) plus the
+runtime libraries they link against, so no compiler is needed. Building from a source
+tree (`download` + `build`) remains available for unreleased refs. Stdlib-only
+(``urllib.request``, ``tarfile``, ``tomllib``, ``subprocess``, ``platform``).
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import platform
 import re
-import shlex
 import shutil
 import subprocess
 import sys
 import tarfile
 import tempfile
+import time
+import tomllib
 import urllib.error
 import urllib.request
 import warnings
@@ -33,15 +36,21 @@ _ARCHIVE_URL = "https://github.com/{owner}/{repo}/archive/{ref}.tar.gz"
 _RELEASES_LATEST_URL = "https://api.github.com/repos/{owner}/{repo}/releases/latest"
 
 _SEMVER_RE = re.compile(r"\d+\.\d+\.\d+")
-# magemin_ext.c relies on MAGEMin's thread-safe endmember-lookup registry (hash_init.h) for
-# multi_point_minimization, and on a fully initialized DEW model for the "all" database.
-MIN_MAGEMIN_VERSION = (2, 0, 7)
+# First release with the solver/buffer/phase-suppression C API (`_lib._REQUIRED_API`).
+MIN_MAGEMIN_VERSION = (2, 0, 8)
+# Floor for a source tree's own `gv.version`. Kept separate from MIN_MAGEMIN_VERSION because
+# `main` can lag behind (between releases it may still report the previous one). Whether a
+# built tree actually has the C API is checked by symbol when the library is loaded
+# (`_lib._load`).
+# Keep in sync with min_version in scripts/build_lib.sh.
+_MIN_SOURCE_VERSION = (2, 0, 8)
 _SOURCE_VERSION_RE = re.compile(r'strcpy\(\s*gv\.version\s*,\s*"(\d+)\.(\d+)\.(\d+)')
 _UNSAFE_DIRNAME_CHARS_RE = re.compile(r"[^A-Za-z0-9._-]")
+# `_fetch` retries transient download failures, waiting _FETCH_RETRY_DELAY * attempt seconds.
+_FETCH_ATTEMPTS = 4
+_FETCH_RETRY_DELAY = 5.0
 
-# Platform defaults, mirroring scripts/build_lib.sh's Linux/Darwin values exactly, plus a
-# best-effort Windows/MSYS2 row (see build()'s docstring -- not build-tested on this dev
-# machine, which has no Windows/MSYS2 environment).
+# Source-build platform defaults (best-effort Windows/MSYS2 row -- see build()'s docstring).
 _INC_DEFAULTS = {
     "Linux": "",
     "Darwin": "-I/opt/homebrew/include",
@@ -58,16 +67,44 @@ _LIB_EXT_BY_SYSTEM = {
     "Windows": "dll",
 }
 
-_CCFLAGS = [
-    "-Wall",
-    "-O3",
-    "-g",
-    "-fPIC",
-    "-Wno-unused-variable",
-    "-Wno-unused-but-set-variable",
-    "-march=native",
-    "-funroll-loops",
-]
+# Prebuilt binaries: MAGEMin_jll and the jll packages its library links against. Every
+# library is installed into one flat directory, where each binary finds its dependencies
+# by itself (RUNPATH $ORIGIN on Linux, @loader_path on macOS, the DLL's own directory on
+# Windows), so loading libMAGEMin needs no preloading.
+_JLL_OWNER = "JuliaBinaryWrappers"
+_JLL_RAW_URL = "https://raw.githubusercontent.com/{owner}/{repo}.jl/{ref}/{file}"
+_JLL_RELEASES_URL = (
+    "https://api.github.com/repos/{owner}/{repo}.jl/releases?per_page=100&page={page}"
+)
+_MAGEMIN_JLL = "MAGEMin_jll"
+_JLL_DEPENDENCIES = ("CompilerSupportLibraries_jll", "OpenBLAS32_jll", "NLopt_jll")
+# Runtime libraries libMAGEMin needs from those packages (file-name prefixes); everything
+# else they ship (sanitizer runtimes, headers, ...) is left out.
+_RUNTIME_LIBRARY_PREFIXES = (
+    "libnlopt",
+    "libopenblas",
+    "libgfortran",
+    "libquadmath",
+    "libgcc_s",
+    "libstdc++",
+    "libwinpthread",
+)
+_ARCH_ALIASES = {
+    "x86_64": "x86_64",
+    "amd64": "x86_64",
+    "aarch64": "aarch64",
+    "arm64": "aarch64",
+    "i686": "i686",
+    "i386": "i686",
+    "x86": "i686",
+    "armv7l": "armv7l",
+    "armv6l": "armv6l",
+    "ppc64le": "powerpc64le",
+}
+_JLL_OS = {"Linux": "linux", "Darwin": "macos", "Windows": "windows", "FreeBSD": "freebsd"}
+# Platform keys an Artifacts.toml entry may carry that are matched (or are bookkeeping).
+_PLATFORM_KEYS = {"arch", "os", "libc", "libgfortran_version", "cxxstring_abi", "call_abi"}
+_ENTRY_KEYS = _PLATFORM_KEYS | {"git-tree-sha1", "download", "lazy"}
 
 
 def resolve_ref(version: str | None) -> str:
@@ -99,13 +136,15 @@ def resolve_ref(version: str | None) -> str:
     return version
 
 
-def _check_min_version(found: tuple[int, ...], label: str) -> None:
-    """Raise `MAGEMinDownloadError` if `found` is older than `MIN_MAGEMIN_VERSION`."""
-    if found < MIN_MAGEMIN_VERSION:
-        minimum = ".".join(str(part) for part in MIN_MAGEMIN_VERSION)
+def _check_min_version(
+    found: tuple[int, ...], label: str, minimum: tuple[int, ...] = MIN_MAGEMIN_VERSION
+) -> None:
+    """Raise `MAGEMinDownloadError` if `found` is older than `minimum`."""
+    if found < minimum:
+        required = ".".join(str(part) for part in minimum)
         raise MAGEMinDownloadError(
-            f"MAGEMin {label} is not supported: this package requires MAGEMin >= {minimum} "
-            "(older versions are not thread-safe with magemin_ext)."
+            f"MAGEMin {label} is not supported: this package requires MAGEMin >= {required}. "
+            "Install the newest release instead: magemin-install"
         )
 
 
@@ -116,7 +155,7 @@ def _check_source_version(src_dir: Path) -> None:
     branches/forks still build.
 
     Raises:
-        MAGEMinDownloadError: The tree's version is older than `MIN_MAGEMIN_VERSION`.
+        MAGEMinDownloadError: The tree's version is older than `_MIN_SOURCE_VERSION`.
     """
     init_c = src_dir / "src" / "initialize.c"
     try:
@@ -127,12 +166,12 @@ def _check_source_version(src_dir: Path) -> None:
         warnings.warn(
             f"Could not determine the MAGEMin version from {init_c}; "
             "building anyway, but versions older than "
-            f"{'.'.join(str(part) for part in MIN_MAGEMIN_VERSION)} are unsupported.",
+            f"{'.'.join(str(part) for part in _MIN_SOURCE_VERSION)} are unsupported.",
             stacklevel=3,
         )
         return
     found = tuple(int(part) for part in match.groups())
-    _check_min_version(found, ".".join(match.groups()))
+    _check_min_version(found, ".".join(match.groups()), _MIN_SOURCE_VERSION)
 
 
 def _latest_release_ref() -> str:
@@ -213,19 +252,29 @@ def _download_progress_hook(block_num: int, block_size: int, total_size: int) ->
 def _fetch(url: str, dest_file: Path, *, verbose: bool = False) -> None:
     """Download `url` to `dest_file`. Thin network seam, monkeypatched in tests.
 
+    Transient failures (HTTP 5xx, connectivity errors) are retried up to
+    `_FETCH_ATTEMPTS` times with a growing delay -- GitHub's release-asset downloads
+    occasionally return 504 for a single asset.
+
     Raises:
-        MAGEMinDownloadError: On an HTTP error (including 404) or a
-            connectivity failure.
+        MAGEMinDownloadError: On an HTTP error (including 404), or a 5xx/connectivity
+            failure that persists across every attempt.
     """
-    try:
-        urllib.request.urlretrieve(
-            url, dest_file, reporthook=_download_progress_hook if verbose else None
-        )
-    except (urllib.error.HTTPError, urllib.error.URLError) as exc:
-        raise MAGEMinDownloadError(f"failed to download {url}: {exc}") from exc
-    finally:
-        if verbose:
-            print(file=sys.stderr)
+    for attempt in range(1, _FETCH_ATTEMPTS + 1):
+        try:
+            urllib.request.urlretrieve(
+                url, dest_file, reporthook=_download_progress_hook if verbose else None
+            )
+            return
+        except (urllib.error.HTTPError, urllib.error.URLError) as exc:
+            transient = not isinstance(exc, urllib.error.HTTPError) or exc.code >= 500
+            if not transient or attempt == _FETCH_ATTEMPTS:
+                raise MAGEMinDownloadError(f"failed to download {url}: {exc}") from exc
+            _log(f"\n{exc}; retrying ({attempt}/{_FETCH_ATTEMPTS - 1})", verbose=verbose)
+            time.sleep(_FETCH_RETRY_DELAY * attempt)
+        finally:
+            if verbose:
+                print(file=sys.stderr)
 
 
 def _write_marker(src_dir: Path) -> None:
@@ -261,8 +310,8 @@ def download(
             extraction, cache hits) to stderr.
 
     Returns:
-        `dest`, containing the extracted MAGEMin source tree (same layout as
-        the vendored `MAGEMin/`: `Makefile`, `src/`, etc. directly inside it).
+        `dest`, containing the extracted MAGEMin source tree (`Makefile`,
+        `src/`, etc. directly inside it).
 
     Raises:
         MAGEMinDownloadError: The ref doesn't exist upstream (404), a
@@ -340,18 +389,16 @@ def build(
     libs: str | None = None,
     verbose: bool = False,
 ) -> Path:
-    """Build libMAGEMin from a MAGEMin source tree via `make` + a C compiler.
+    """Build libMAGEMin from a MAGEMin source tree with its own `make lib`.
 
-    Works identically whether `src_dir` is the vendored `MAGEMin/` tree or a
-    tree returned by `download()` -- no special-casing which one it is.
-    Reimplements `scripts/build_lib.sh`'s logic in pure Python/`subprocess`
-    (no bash), so it also runs on Windows.
+    Works on any MAGEMin source tree, e.g. one returned by `download()`. Pure
+    Python/`subprocess` (no bash), so it also runs on Windows. Needs `make`, a
+    C compiler, LAPACKE and NLopt.
 
     Args:
         src_dir: Directory containing MAGEMin's `Makefile` and `src/`.
         cc: C compiler. Defaults to the `CC` environment variable, or `gcc`
-            (matching `scripts/build_lib.sh`'s override of the vendored
-            Makefile's own `clang` default).
+            (overriding the Makefile's own `clang` default).
         inc: Extra include flags, e.g. `-I/opt/homebrew/include` on macOS.
             Platform default if not given.
         libs: Link flags, e.g. `-lm -llapacke -lnlopt -L/usr/lib` on Linux.
@@ -365,18 +412,14 @@ def build(
 
     Raises:
         MAGEMinDownloadError: The source tree's version (read from
-            `src/initialize.c`) is older than `MIN_MAGEMIN_VERSION`,
-            `make`/`cc` is not on `PATH`, or any build step (`make clean`,
-            `make lib`, compiling `magemin_ext.c`, or the final link) exits
+            `src/initialize.c`) is older than `_MIN_SOURCE_VERSION`,
+            `make`/`cc` is not on `PATH`, or `make clean`/`make lib` exits
             non-zero.
 
     Note:
-        The Windows/MSYS2 defaults (`inc`/`libs`/`.dll` output) are designed
-        from documented MSYS2 mingw64 packaging conventions and this
-        project's verified Makefile command-line-override mechanics -- they
-        are not build-tested end-to-end (no Windows/MSYS2 environment is
-        available in this project's own development/test environment). Pass
-        `cc`/`inc`/`libs` explicitly if your MSYS2 layout differs.
+        The Windows/MSYS2 defaults (`inc`/`libs`/`.dll` output) are not
+        build-tested end-to-end. Pass `cc`/`inc`/`libs` explicitly if your
+        MSYS2 layout differs -- or use the prebuilt binaries (`install()`).
     """
     src_dir = Path(src_dir)
     _check_source_version(src_dir)
@@ -386,12 +429,7 @@ def build(
     libs = libs if libs is not None else _LIBS_DEFAULTS.get(system, "")
     ext = _LIB_EXT_BY_SYSTEM.get(system, "so")
 
-    magemin_ext_dir = Path(__file__).resolve().parent / "magemin_ext"
-    ext_c = magemin_ext_dir / "magemin_ext.c"
-    ext_o = magemin_ext_dir / "magemin_ext.o"
-
     _log(f"Building with CC={cc} (system: {system})", verbose=verbose)
-
     _log("Cleaning previous build artifacts (make clean)...", verbose=verbose)
     _run(["make", "clean"], cwd=src_dir, verbose=verbose)
 
@@ -401,72 +439,294 @@ def build(
         cwd=src_dir,
         verbose=verbose,
     )
-    # The Makefile's own `lib:` target always names its output libMAGEMin.dylib,
-    # even on Linux/Windows -- only its .o byproducts (which `lib:`, unlike
-    # `all:`, leaves behind) are wanted.
-    (src_dir / "libMAGEMin.dylib").unlink(missing_ok=True)
-
-    compile_cmd = [
-        cc,
-        *_CCFLAGS,
-        "-c",
-        str(ext_c),
-        "-I",
-        str(src_dir / "src"),
-        "-I",
-        str(magemin_ext_dir),
-        "-o",
-        str(ext_o),
-    ]
-    if inc:
-        compile_cmd += shlex.split(inc)
-    _log("Compiling magemin_ext.c...", verbose=verbose)
-    _run(compile_cmd, cwd=magemin_ext_dir, verbose=verbose)
-
-    objects = sorted(str(p) for p in (src_dir / "src").rglob("*.o"))
+    # The Makefile's `lib:` target always names its output libMAGEMin.dylib.
     out = src_dir / f"libMAGEMin.{ext}"
-    link_cmd = [cc, "-shared", "-fPIC", "-o", str(out), *objects, str(ext_o)]
-    if inc:
-        link_cmd += shlex.split(inc)
-    if libs:
-        link_cmd += shlex.split(libs)
-    link_cmd += ["-flto"]
-    _log(f"Linking {out.name} from {len(objects)} object files...", verbose=verbose)
-    _run(link_cmd, cwd=magemin_ext_dir, verbose=verbose)
+    built = src_dir / "libMAGEMin.dylib"
+    if built != out:
+        built.replace(out)
+    for obj in (src_dir / "src").rglob("*.o"):
+        obj.unlink()
 
     _log(f"Built library at {out}", verbose=verbose)
     return out
+
+
+def _github_api_json(url: str) -> object:
+    """GET a GitHub API URL as JSON. Network seam, mockable.
+
+    Sends `GITHUB_TOKEN` when set, lifting the unauthenticated rate limit (e.g. in CI).
+
+    Raises:
+        MAGEMinDownloadError: The request fails.
+    """
+    headers = {"User-Agent": "magemin-install", "Accept": "application/vnd.github+json"}
+    token = os.environ.get("GITHUB_TOKEN")
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    try:
+        with urllib.request.urlopen(urllib.request.Request(url, headers=headers)) as response:
+            return json.load(response)
+    except (urllib.error.HTTPError, urllib.error.URLError) as exc:
+        raise MAGEMinDownloadError(f"GitHub API request failed ({url}): {exc}") from exc
+
+
+def _fetch_text(url: str) -> str:
+    """Download a small text file. Network seam, mockable.
+
+    Raises:
+        MAGEMinDownloadError: On an HTTP error (including 404) or a connectivity failure.
+    """
+    request = urllib.request.Request(url, headers={"User-Agent": "magemin-install"})
+    try:
+        with urllib.request.urlopen(request) as response:
+            return response.read().decode()
+    except (urllib.error.HTTPError, urllib.error.URLError) as exc:
+        raise MAGEMinDownloadError(f"failed to download {url}: {exc}") from exc
+
+
+def _jll_file(repo: str, ref: str, file: str) -> str:
+    return _fetch_text(_JLL_RAW_URL.format(owner=_JLL_OWNER, repo=repo, ref=ref, file=file))
+
+
+def _jll_release_tag(repo: str, version: str) -> str:
+    """Return the newest `<Name>-v{version}+N` release tag of a jll package.
+
+    Raises:
+        MAGEMinDownloadError: No release of that version exists.
+    """
+    name = repo.removesuffix("_jll")
+    pattern = re.compile(rf"{re.escape(name)}-v{re.escape(version)}\+(\d+)")
+    builds: list[tuple[int, str]] = []
+    page = 1
+    while True:
+        releases = _github_api_json(
+            _JLL_RELEASES_URL.format(owner=_JLL_OWNER, repo=repo, page=page)
+        )
+        if not isinstance(releases, list) or not releases:
+            break
+        for release in releases:
+            match = pattern.fullmatch(release["tag_name"])
+            if match:
+                builds.append((int(match.group(1)), release["tag_name"]))
+        page += 1
+    if not builds:
+        raise MAGEMinDownloadError(f"no prebuilt {repo} release for version {version}")
+    return max(builds)[1]
+
+
+def _host_platform() -> dict[str, str]:
+    """Describe this machine in Artifacts.toml's platform terms."""
+    system = platform.system()
+    machine = platform.machine().lower()
+    if system not in _JLL_OS or machine not in _ARCH_ALIASES:
+        raise MAGEMinDownloadError(
+            f"no prebuilt MAGEMin binaries for {system}/{platform.machine()}; "
+            "build from source instead (magemin-install --from-source)"
+        )
+    host = {
+        "arch": _ARCH_ALIASES[machine],
+        "os": _JLL_OS[system],
+        "libgfortran_version": "5.0.0",
+        "cxxstring_abi": "cxx11",
+    }
+    if system == "Linux":
+        host["libc"] = "glibc" if platform.libc_ver()[0] == "glibc" else "musl"
+    if host["arch"].startswith("armv"):
+        host["call_abi"] = "eabihf"
+    return host
+
+
+def _select_artifact(entries: list[dict], host: dict[str, str]) -> dict:
+    """Pick the Artifacts.toml entry for `host`.
+
+    An entry matches when every platform key it carries equals the host's value
+    (keys it omits, like `libgfortran_version` on a package with no Fortran, match
+    anything). Entries with unrecognized keys (sanitizer or microarchitecture
+    variants) are skipped.
+
+    Raises:
+        MAGEMinDownloadError: No entry matches.
+    """
+    for entry in entries:
+        if set(entry) - _ENTRY_KEYS:
+            continue
+        if all(entry[key] == host.get(key) for key in _PLATFORM_KEYS & set(entry)):
+            return entry
+    raise MAGEMinDownloadError(f"no prebuilt binary for platform {host}")
+
+
+def _jll_artifact(repo: str, ref: str, host: dict[str, str]) -> dict:
+    """Return the download entry ({"url", "sha256"}) of `repo` at `ref` for `host`."""
+    artifacts = tomllib.loads(_jll_file(repo, ref, "Artifacts.toml"))
+    (entries,) = artifacts.values()
+    return _select_artifact(entries, host)["download"][0]
+
+
+def _jll_dependency_ref(repo: str, compat: dict[str, str]) -> str:
+    """The ref to fetch a dependency at: its exact `=X.Y.Z` compat pin, else its newest build."""
+    pin = compat.get(repo, "")
+    if pin.startswith("="):
+        return _jll_release_tag(repo, pin.removeprefix("=").strip())
+    return "main"
+
+
+def _install_artifact(download: dict, dest: Path, *, main: bool, verbose: bool) -> None:
+    """Download, verify and unpack one jll tarball, copying its runtime libraries into `dest`."""
+    with tempfile.TemporaryDirectory() as tmp_str:
+        tmp = Path(tmp_str)
+        archive = tmp / "artifact.tar.gz"
+        _log(f"Downloading {download['url']}", verbose=verbose)
+        _fetch(download["url"], archive, verbose=verbose)
+        digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+        if digest != download["sha256"]:
+            raise MAGEMinDownloadError(
+                f"checksum mismatch for {download['url']}: expected {download['sha256']}, "
+                f"got {digest}"
+            )
+        with tarfile.open(archive, "r:gz") as tf:
+            tf.extractall(tmp / "x", filter="data")
+        lib_dir = tmp / "x" / ("bin" if sys.platform == "win32" else "lib")
+        prefixes = ("libMAGEMin.",) if main else _RUNTIME_LIBRARY_PREFIXES
+        for path in sorted(lib_dir.glob("*")) if lib_dir.is_dir() else []:
+            if path.name.startswith(prefixes) and not path.is_dir():
+                target = dest / path.name
+                target.unlink(missing_ok=True)
+                if path.is_symlink():
+                    target.symlink_to(os.readlink(path))
+                else:
+                    shutil.copy2(path, target)
+
+
+def _resolve_binary_version(version: str | None) -> tuple[str, str]:
+    """Map `version` to (MAGEMin version, MAGEMin_jll ref)."""
+    if version is None:
+        project = tomllib.loads(_jll_file(_MAGEMIN_JLL, "main", "Project.toml"))
+        resolved = project["version"].split("+")[0]
+        _check_min_version(tuple(int(part) for part in resolved.split(".")), resolved)
+        return resolved, "main"
+    if not _SEMVER_RE.fullmatch(version):
+        raise MAGEMinDownloadError(
+            f"prebuilt binaries exist only for released X.Y.Z versions, not {version!r}; "
+            "build from source instead (magemin-install --from-source)"
+        )
+    _check_min_version(tuple(int(part) for part in version.split(".")), version)
+    return version, _jll_release_tag(_MAGEMIN_JLL, version)
+
+
+def install_binary(
+    version: str | None = None,
+    dest: Path | str | None = None,
+    *,
+    force: bool = False,
+    verbose: bool = False,
+) -> Path:
+    """Install the prebuilt MAGEMin library (MAGEMin_jll) and its runtime libraries.
+
+    Args:
+        version: An `X.Y.Z` MAGEMin release, or `None` (default) for the newest
+            prebuilt one.
+        dest: Directory to install into. Defaults to
+            `default_cache_dir() / f"MAGEMin-{version}-bin"`; only the default
+            updates the cache's "current" marker (see `download`).
+        force: Re-install even if `dest` already holds a library.
+        verbose: Print progress to stderr.
+
+    Returns:
+        Path to the installed `libMAGEMin.{so,dylib,dll}`.
+
+    Raises:
+        MAGEMinDownloadError: No prebuilt binary for this platform or version, a
+            download or checksum failure, or the release predates the C API this
+            package needs.
+    """
+    host = _host_platform()
+    resolved, ref = _resolve_binary_version(version)
+    _log(f"Installing prebuilt MAGEMin {resolved} for {host['arch']}-{host['os']}", verbose=verbose)
+    explicit_dest = dest is not None
+    dest = Path(dest) if dest is not None else default_cache_dir() / f"MAGEMin-{resolved}-bin"
+    ext = _LIB_EXT_BY_SYSTEM.get(platform.system(), "so")
+    lib_path = dest / f"libMAGEMin.{ext}"
+
+    if lib_path.exists() and not force:
+        _log(f"Using installed library at {lib_path} (pass --force to reinstall)", verbose=verbose)
+    else:
+        project = tomllib.loads(_jll_file(_MAGEMIN_JLL, ref, "Project.toml"))
+        compat = project.get("compat", {})
+        if dest.exists():
+            shutil.rmtree(dest)
+        dest.mkdir(parents=True)
+        for repo in _JLL_DEPENDENCIES:
+            if repo not in project.get("deps", {}):
+                continue
+            download = _jll_artifact(repo, _jll_dependency_ref(repo, compat), host)
+            _install_artifact(download, dest, main=False, verbose=verbose)
+        download = _jll_artifact(_MAGEMIN_JLL, ref, host)
+        _install_artifact(download, dest, main=True, verbose=verbose)
+
+    _check_loadable(lib_path, resolved)
+    if not explicit_dest:
+        _write_marker(dest)
+    _log(f"Installed library at {lib_path}", verbose=verbose)
+    return lib_path
+
+
+def _check_loadable(lib_path: Path, version: str) -> None:
+    """Load the installed library once, so a broken or too-old install fails here.
+
+    Raises:
+        MAGEMinDownloadError: The library can't be loaded, or lacks the needed C API.
+    """
+    from magemin import _lib
+    from magemin.errors import MAGEMinLibraryNotFoundError
+
+    try:
+        _lib._load(lib_path)
+    except MAGEMinLibraryNotFoundError as exc:
+        raise MAGEMinDownloadError(
+            f"the prebuilt MAGEMin {version} predates the C API this package needs; install the "
+            "newest release (magemin-install) or build a newer source tree (magemin-install latest)"
+        ) from exc
+    except OSError as exc:
+        raise MAGEMinDownloadError(f"installed {lib_path} could not be loaded: {exc}") from exc
 
 
 def install(
     version: str | None = None,
     dest: Path | str | None = None,
     *,
+    from_source: bool = False,
     force: bool = False,
     cc: str | None = None,
     inc: str | None = None,
     libs: str | None = None,
     verbose: bool = False,
 ) -> Path:
-    """Download and build MAGEMin, returning the path to the built library.
+    """Install the MAGEMin C library, returning the path to it.
 
-    Equivalent to `build(download(version, dest, force=force), cc=cc, inc=inc,
-    libs=libs)`. The main entry point for most callers and for the
-    `magemin-install` console script.
+    The main entry point for most callers and for the `magemin-install` console
+    script. Released versions install the prebuilt binaries (`install_binary`) --
+    no compiler needed. `version="latest"` (the `main` branch), any other git ref,
+    or `from_source=True` downloads and builds the source instead
+    (`build(download(...))`).
 
     Args:
-        version: See `resolve_ref`. Defaults to the latest published release
-            (pass `version="latest"` for the `main` branch).
-        dest: See `download`. Defaults to a per-user cache directory.
-        force: See `download`.
-        cc: See `build`.
-        inc: See `build`.
-        libs: See `build`.
-        verbose: Print download/build progress to stderr.
+        version: `None` (default) for the newest release, `X.Y.Z`, `"latest"`, or
+            a git ref -- see `resolve_ref`.
+        dest: Install directory (binaries) or source-tree directory (source
+            build). Defaults to a per-user cache directory.
+        from_source: Build from source even for a released version.
+        force: Re-download even if `dest` is already populated.
+        cc: Source builds only, see `build`.
+        inc: Source builds only, see `build`.
+        libs: Source builds only, see `build`.
+        verbose: Print progress to stderr.
 
     Returns:
-        Path to the built `libMAGEMin.{so,dylib,dll}`.
+        Path to the installed `libMAGEMin.{so,dylib,dll}`.
     """
+    is_release = version is None or _SEMVER_RE.fullmatch(version) is not None
+    if is_release and not from_source:
+        return install_binary(version, dest, force=force, verbose=verbose)
     src_dir = download(version, dest, force=force, verbose=verbose)
     return build(src_dir, cc=cc, inc=inc, libs=libs, verbose=verbose)
 
@@ -475,25 +735,34 @@ def main(argv: list[str] | None = None) -> int:
     """Entry point for the `magemin-install` console script."""
     parser = argparse.ArgumentParser(
         prog="magemin-install",
-        description="Download and build the MAGEMin C library from GitHub.",
+        description="Install the MAGEMin C library: prebuilt binaries for released versions, "
+        "or a source build.",
     )
     parser.add_argument(
         "version",
         nargs="?",
         default=None,
-        help='MAGEMin version to install: "latest" for the tip of the main branch '
-        "(bleeding edge, not necessarily a tagged release), X.Y.Z for release tag "
-        "vX.Y.Z, or any other git ref (branch/tag/SHA). Defaults to the latest "
-        "published release.",
+        help="MAGEMin version to install: X.Y.Z for a release (prebuilt binaries), "
+        '"latest" for the tip of the main branch, or any other git ref (branch/tag/SHA) -- '
+        "both built from source. Defaults to the newest prebuilt release.",
     )
     parser.add_argument(
         "--dest",
         default=None,
-        help="Destination directory for the source tree. Defaults to a per-user cache directory.",
+        help="Install directory (or source-tree directory for a source build). "
+        "Defaults to a per-user cache directory.",
     )
-    parser.add_argument("--cc", default=None, help="C compiler (default: $CC or gcc).")
-    parser.add_argument("--inc", default=None, help="Extra compiler include flags.")
-    parser.add_argument("--libs", default=None, help="Linker flags.")
+    parser.add_argument(
+        "--from-source",
+        action="store_true",
+        help="Build from source even for a released version (needs make, a C compiler, "
+        "LAPACKE and NLopt).",
+    )
+    parser.add_argument(
+        "--cc", default=None, help="Source builds: C compiler (default: $CC or gcc)."
+    )
+    parser.add_argument("--inc", default=None, help="Source builds: extra include flags.")
+    parser.add_argument("--libs", default=None, help="Source builds: linker flags.")
     parser.add_argument(
         "--force", action="store_true", help="Re-download even if --dest already exists."
     )
@@ -501,13 +770,13 @@ def main(argv: list[str] | None = None) -> int:
     group.add_argument(
         "--download-only",
         action="store_true",
-        help="Only download the source tree, skip building.",
+        help="Source builds: only download the source tree, skip building.",
     )
     group.add_argument(
         "--build-only",
         action="store_true",
-        help="Only build; --dest (or the default cache path for the version argument) must "
-        "already contain a downloaded/vendored source tree. Skips the network fetch.",
+        help="Source builds: only build; --dest (or the default cache path for the version "
+        "argument) must already contain a downloaded source tree.",
     )
     parser.add_argument(
         "--quiet", action="store_true", help="Suppress progress output (only errors/result path)."
@@ -536,6 +805,7 @@ def main(argv: list[str] | None = None) -> int:
             result = install(
                 args.version,
                 args.dest,
+                from_source=args.from_source,
                 force=args.force,
                 cc=args.cc,
                 inc=args.inc,

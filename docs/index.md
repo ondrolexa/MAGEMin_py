@@ -6,21 +6,19 @@ mineral assemblage for a given bulk-rock composition and pressure/temperature co
 
 ## Relation to MAGEMin / MAGEMin_C.jl
 
-This project vendors a copy of the upstream `MAGEMin` C library and its Julia bindings,
-[`MAGEMin_C.jl`](https://github.com/ComputationalThermodynamics/MAGEMin_C.jl), for reference.
-`magemin` wraps MAGEMin's own official minimal C API (`MAGEMin_api.h`) via
-[`ctypes`](https://docs.python.org/3/library/ctypes.html) -- a small, stable 5-function surface
-(`MAGEMin_Init`, `MAGEMin_NOxides`, `MAGEMin_OxideNames`, `MAGEMin_ComputeEquilibrium`,
-`MAGEMin_Free`) intended by upstream for external C/C++ callers. A companion C extension,
-`magemin_ext/`, extends this with oxygen-buffer/fixed-activity constraints, phase suppression,
-`sb` (Stixrude & Lithgow-Bertelloni) database support, and reduced-memory output --
-by calling MAGEMin's existing internal functions through its unmodified headers, so a future
-MAGEMin update just drops in a fresh copy and rebuilds.
+`magemin` wraps MAGEMin's own official C API (`MAGEMin_api.h`) via
+[`ctypes`](https://docs.python.org/3/library/ctypes.html) -- a small, stable surface intended by
+upstream for external C/C++ callers: init/compute/free, oxide and phase names, solver choice,
+oxygen-buffer/fixed-activity constraints, and phase suppression, for every database including
+`sb` (Stixrude & Lithgow-Bertelloni). The package contains no C code of its own and loads the
+official prebuilt MAGEMin library (see [Installation](installation.md)). The upstream Julia
+bindings, [`MAGEMin_C.jl`](https://github.com/ComputationalThermodynamics/MAGEMin_C.jl), serve
+only as a reference for API shape and behavior.
 
 Concretely, this means `magemin`:
 
 - Wraps [`MAGEMin.compute()`][magemin.core.MAGEMin.compute] around one well-defined entry point
-  (`MAGEMin_ComputeEquilibriumEx`), returning a fully self-contained
+  (`MAGEMin_ComputeEquilibrium`), returning a fully self-contained
   [`EquilibriumResult`][magemin.results.EquilibriumResult] (no live pointers into C memory survive
   the call).
 - Ships a handful of hand-curated [predefined bulk-rock compositions][magemin.bulk_rocks.BulkRock]
@@ -98,8 +96,7 @@ worked example end to end.
 
 ## Scope and limitations
 
-This package wraps MAGEMin's minimal C API plus the `magemin_ext/` companion extension. It does
-**not** support (all of which `MAGEMin_C.jl` does, via its much larger internal-API bindings):
+This package wraps MAGEMin's C API (`MAGEMin_api.h`). It does **not** support (all of which `MAGEMin_C.jl` does, via its much larger internal-API bindings):
 
 - Predefined bulk-rock compositions beyond the small hand-curated set in `bulk_rocks` (no lookup of
   MAGEMin's full internal `--test` composition tables)
@@ -114,4 +111,4 @@ If you need any of these, see
 
 ## License
 
-GPLv3, matching the vendored `MAGEMin` C library this package wraps.
+GPLv3, matching the `MAGEMin` C library this package wraps.

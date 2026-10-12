@@ -15,3 +15,5 @@ handle staying open or unreused.
 ::: magemin.results.MetastableSolutionPhase
 
 ::: magemin.results.PurePhase
+
+::: magemin.results.FinalNewtonSystem

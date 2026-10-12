@@ -7,70 +7,60 @@ pip install magemin
 # or: uv add magemin
 ```
 
-## Downloading and building MAGEMin
+## Installing the MAGEMin library
 
-Building the C library requires:
-
-- A C compiler (e.g. `gcc` or `clang`)
-- `liblapacke-dev`
-- `libnlopt-dev`
-
-On Debian/Ubuntu:
-
-```sh
-sudo apt install liblapacke-dev libnlopt-dev
-```
-
-Then:
+The recommended way is to install the official prebuilt binaries of the latest MAGEMin release:
 
 ```sh
 magemin-install
 ```
 
-By default this fetches the latest **published release** into a per-user cache directory (e.g.
-`~/.cache/magemin` on Linux) and builds it there; `magemin` finds it automatically on the next
-import, no environment variable needed. MAGEMin **2.0.7 or newer** is required;
-`magemin-install` and `scripts/build_lib.sh` refuse to build anything older. Options:
+This downloads the official prebuilt MAGEMin binaries -- `MAGEMin_jll`, built by Julia's
+[Yggdrasil](https://github.com/JuliaPackaging/Yggdrasil) for Linux (glibc and musl), macOS and
+Windows on x86_64 and ARM -- together with the runtime libraries they link against (NLopt,
+OpenBLAS, the GCC runtime), verifies their checksums, and installs them side by side into a
+per-user cache directory (e.g. `~/.cache/magemin` on Linux). No compiler or system packages are
+needed, and `magemin` finds the library automatically on the next import. Options:
 
 ```sh
-magemin-install latest              # the main branch (dev/HEAD) instead of a release
-magemin-install 2.0.7               # a specific tagged release (-> git ref v2.0.7)
-magemin-install some-sha            # any other branch/tag/commit SHA
-magemin-install --dest /path/to/dir --cc clang
+magemin-install X.Y.Z               # a specific release
+magemin-install --dest /path/to/dir # install somewhere else (see MAGEMIN_LIB_PATH below)
+magemin-install --force             # reinstall over an existing install
 ```
 
-## Building from an existing MAGEMin source tree
+MAGEMin **2.0.8 or newer** is required: it is the first release with the C API this package uses
+(`MAGEMin_api.h`). `magemin-install` refuses older releases, and `import`-time loading rejects an
+older library with a clear error.
 
-Already have a MAGEMin source checkout locally (e.g. this project's own dev repo, which vendors
-one at `MAGEMin/`) and want to build against it directly instead of downloading a copy?
+## Building from source (developers)
+
+To use unreleased MAGEMin changes -- the tip of its `main` branch or any other git ref -- or on a
+platform without prebuilt binaries, download and build the source instead. This needs `make`, a C
+compiler, LAPACKE and NLopt (`sudo apt install liblapacke-dev libnlopt-dev` on Debian/Ubuntu):
 
 ```sh
-./scripts/build_lib.sh
+magemin-install latest              # the main branch (HEAD)
+magemin-install some-ref            # any other branch/tag/commit SHA
+magemin-install X.Y.Z --from-source # a release, built locally
+magemin-install latest --cc clang --libs "-lm -llapacke -lnlopt"
 ```
 
-This runs `make lib` inside the source tree (with `USE_MPI=0`, since neither the API nor this
-package's parallelism needs MPI), then compiles the `magemin_ext/` companion extension (which adds
-buffer/activity fixing, phase suppression, sb/gh database support, and phase-name discovery on top
-of MAGEMin's own internal functions -- see `magemin_ext/magemin_ext.h` for its C-level contract) and
-links it together with MAGEMin's object files into one `libMAGEMin.so` inside that source tree. If
-your system's `cc`/`clang` isn't available, set `CC=gcc ./scripts/build_lib.sh` (or any other
-compiler).
+This runs MAGEMin's own `make lib` (with `USE_MPI=0`, since neither the API nor this package's
+parallelism needs MPI). On Windows it needs a MinGW-w64 toolchain such as
+[MSYS2](https://www.msys2.org/) with its `mingw-w64-x86_64-gcc`, `-lapack` and `-nlopt` packages,
+run from a "mingw64" shell; this path is best-effort and not tested by this project -- prefer the
+prebuilt binaries there.
 
-The source location defaults to `./MAGEMin` and can be overridden with `MAGEMIN_SRC_DIR` (e.g.
-`MAGEMIN_SRC_DIR=/path/to/MAGEMin ./scripts/build_lib.sh`) -- nothing under it is ever modified by
-this build, which keeps it safe to point at a separately managed/updated copy. Note this script is
-only available in this project's own dev repo, not part of the published PyPI package.
+### From an existing MAGEMin source tree
 
-### Windows
+To build a MAGEMin checkout you already have, use the dev repo's script:
 
-`magemin-install` runs on Windows, but driving `make`/`gcc` there requires a MinGW-w64 toolchain you
-provide yourself -- typically [MSYS2](https://www.msys2.org/) with its `mingw-w64-x86_64-gcc`,
-`mingw-w64-x86_64-lapack`, and `mingw-w64-x86_64-nlopt` packages installed, run from an MSYS2
-"mingw64" shell so `-llapacke -lnlopt` resolve via MSYS2's own `CPATH`/`LIBRARY_PATH` conventions
-(or WSL, treated as Linux). This is the same category of prerequisite as `liblapacke-dev`/
-`libnlopt-dev` on Linux, not a zero-setup feature. **The Windows/MSYS2 path is best-effort and
-community-testable, not verified by this project's own test suite** (which runs on Linux); if your
-MSYS2 layout differs from the defaults, pass `--cc`/`--inc`/`--libs` explicitly.
+```sh
+MAGEMIN_SRC_DIR=/path/to/MAGEMin ./scripts/build_lib.sh
+```
+
+Nothing under the source tree is modified beyond `make`'s own build output. The script is only
+part of the dev repo, not the published package.
 
 ## Pointing at a different library location
 

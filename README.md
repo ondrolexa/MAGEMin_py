@@ -6,14 +6,11 @@ mineral assemblage for a given bulk-rock composition and pressure/temperature co
 
 ## Relation to MAGEMin / MAGEMin_C.jl
 
-`magemin` wraps `MAGEMin`'s own official minimal C API (`MAGEMin_api.h`) via
-[`ctypes`](https://docs.python.org/3/library/ctypes.html) -- a small, stable 5-function surface
-(`MAGEMin_Init`, `MAGEMin_NOxides`, `MAGEMin_OxideNames`, `MAGEMin_ComputeEquilibrium`,
-`MAGEMin_Free`) intended by upstream for external C/C++ callers. `magemin_ext/` adds a small
-companion C extension on top of it (buffer/activity fixing, phase suppression, `sb`/`gh` database
-support, phase-name discovery) by calling MAGEMin's existing internal functions through its
-unmodified headers -- MAGEMin's own source is never edited, so a new MAGEMin release can just be
-downloaded and rebuilt (see [Installation](#installation)) without touching anything here.
+`magemin` wraps `MAGEMin`'s own official C API (`MAGEMin_api.h`) via
+[`ctypes`](https://docs.python.org/3/library/ctypes.html) -- a small, stable surface intended by
+upstream for external C/C++ callers: init/compute/free, oxide and phase names, solver choice,
+oxygen buffer / fixed activity, and phase suppression. This package contains no C code of its
+own; it loads the official prebuilt MAGEMin library (see [Installation](#installation)).
 [`MAGEMin_C.jl`](https://github.com/ComputationalThermodynamics/MAGEMin_C.jl), the upstream Julia
 bindings, is used only as a development-time reference for API shape and behavior, not part of
 this repository. See [Scope and limitations](#scope-and-limitations) for what's still out of
@@ -26,36 +23,36 @@ pip install magemin
 # or: uv add magemin
 ```
 
-Building the C library additionally requires:
-
-- A C compiler (e.g. `gcc` or `clang`)
-- `liblapacke-dev`
-- `libnlopt-dev`
-
-On Debian/Ubuntu:
-
-```sh
-sudo apt install liblapacke-dev libnlopt-dev
-```
-
-Then download and build MAGEMin:
+Then install the MAGEMin library itself (MAGEMin 2.0.8 or newer):
 
 ```sh
 magemin-install
 # or: uv run magemin-install
 ```
 
-This downloads a MAGEMin source release from GitHub, builds it (`make lib`, with `USE_MPI=0`,
-since neither the API nor this package's parallelism needs MPI) together with the `magemin_ext/`
-companion extension, and caches the result in a per-user cache directory (Linux/macOS/Windows --
-see `docs/installation.md` for version pinning, custom compiler/flag options, and Windows/MSYS2
-notes).
+This downloads the official prebuilt MAGEMin binaries (`MAGEMin_jll`, built by Julia's
+Yggdrasil for Linux, macOS and Windows) together with the runtime libraries they need into a
+per-user cache directory -- no compiler or system packages required. Pin a release with
+`magemin-install X.Y.Z`. See the [installation guide](https://github.com/ondrolexa/MAGEMin_py/blob/main/docs/installation.md) for all options.
 
 If your compiled library lives elsewhere, point `magemin` at it with:
 
 ```sh
 export MAGEMIN_LIB_PATH=/path/to/libMAGEMin.so
 ```
+
+### Developer option: building MAGEMin's main branch
+
+To use unreleased MAGEMin changes, download and build the tip of its `main` branch (or any other
+git ref) instead:
+
+```sh
+magemin-install latest              # main branch (HEAD)
+magemin-install some-ref            # any other branch/tag/commit SHA
+```
+
+This needs `make`, a C compiler, LAPACKE and NLopt (`sudo apt install liblapacke-dev
+libnlopt-dev` on Debian/Ubuntu). See the [installation guide](https://github.com/ondrolexa/MAGEMin_py/blob/main/docs/installation.md#building-from-source-developers) for details.
 
 ## Quickstart
 
@@ -126,8 +123,8 @@ mesh = Pseudosection.pt(
 mesh.show()
 ```
 
-Oxygen buffers, phase suppression, and light-weight output (see `docs/usage.md`, or the published
-docs site, for the full walkthrough):
+Oxygen buffers, phase suppression, and light-weight output (see the [usage guide](https://github.com/ondrolexa/MAGEMin_py/blob/main/docs/usage.md) for the full
+walkthrough):
 
 ```python
 result = mg.compute(P=8, T=800, bulk=bulk_rocks.KLB1_IG, buffer="cco", buffer_value=-1.0)
@@ -161,8 +158,9 @@ uv run ruff check .
 uv run ruff format .
 ```
 
-Most tests require the compiled library (`uv run magemin-install`, or `./scripts/build_lib.sh` if
-you have a MAGEMin source tree checked out locally) and are skipped gracefully if it isn't built.
+Most tests require the compiled library (`uv run magemin-install`, or
+`MAGEMIN_SRC_DIR=/path/to/MAGEMin ./scripts/build_lib.sh` for a MAGEMin source checkout) and are
+skipped gracefully if it isn't available.
 
 ### Documentation site
 
@@ -178,9 +176,8 @@ uv run mkdocs build   # static site in site/
 
 ## Scope and limitations
 
-This package wraps MAGEMin's minimal C API plus a small companion extension (`magemin_ext/`) for
-buffer/activity fixing, phase suppression, `sb`/`gh` database support, and light output mode. It
-does **not** support (all of which `MAGEMin_C.jl` does, via its much larger internal-API bindings):
+This package wraps MAGEMin's C API (`MAGEMin_api.h`), which covers buffer/activity fixing,
+phase suppression and the `sb` databases. It does **not** support (all of which `MAGEMin_C.jl` does, via its much larger internal-API bindings):
 
 - Predefined bulk-rock compositions beyond the small hand-curated set in `bulk_rocks` (no lookup of
   MAGEMin's full internal `--test` composition tables)

@@ -21,7 +21,13 @@ from magemin.errors import (
     MAGEMinPlottingError,
 )
 from magemin.pseudosection import MeshPoint, Pseudosection
-from magemin.results import EquilibriumResult, MetastableSolutionPhase, PurePhase, SolutionPhase
+from magemin.results import (
+    EquilibriumResult,
+    FinalNewtonSystem,
+    MetastableSolutionPhase,
+    PurePhase,
+    SolutionPhase,
+)
 
 __all__ = [
     "MAGEMin",
@@ -41,6 +47,7 @@ __all__ = [
     "SolutionPhase",
     "MetastableSolutionPhase",
     "PurePhase",
+    "FinalNewtonSystem",
     "MAGEMinError",
     "MAGEMinLibraryNotFoundError",
     "MAGEMinInitError",

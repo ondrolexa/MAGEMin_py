@@ -1,6 +1,7 @@
 """Tests for library discovery in magemin._lib."""
 
 import ctypes
+import ctypes.util
 from pathlib import Path
 
 import pytest
@@ -20,7 +21,7 @@ def test_library_not_found_raises_actionable_error(monkeypatch: pytest.MonkeyPat
 
 
 def test_get_library_returns_cdll(require_library: None) -> None:
-    """A successfully loaded library is a ctypes.CDLL with the 5+7 API functions."""
+    """A successfully loaded library is a ctypes.CDLL with every MAGEMin_api.h function."""
     lib = _lib.get_library()
     assert isinstance(lib, ctypes.CDLL)
     for name in (
@@ -29,15 +30,18 @@ def test_get_library_returns_cdll(require_library: None) -> None:
         "MAGEMin_OxideNames",
         "MAGEMin_ComputeEquilibrium",
         "MAGEMin_Free",
-        "MAGEMin_InitEx",
-        "MAGEMin_SetBuffer",
-        "MAGEMin_ComputeEquilibriumEx",
-        "MAGEMin_NSolutionPhases",
-        "MAGEMin_SolutionPhaseNames",
-        "MAGEMin_NPurePhases",
-        "MAGEMin_PurePhaseNames",
+        *_lib._REQUIRED_API,
     ):
         assert hasattr(lib, name)
+
+
+def test_library_without_required_api_is_rejected() -> None:
+    """A loadable library lacking the C API this package needs fails clearly at load time."""
+    libm = ctypes.util.find_library("m")
+    if libm is None:
+        pytest.skip("no libm to stand in for an outdated libMAGEMin on this platform")
+    with pytest.raises(MAGEMinLibraryNotFoundError, match="MAGEMin_SetSuppressedPhases"):
+        _lib._load(libm)
 
 
 def test_cache_candidate_paths_reads_marker(

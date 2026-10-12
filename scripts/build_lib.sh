@@ -1,14 +1,10 @@
 #!/usr/bin/env bash
-# Build MAGEMin + the magemin_ext/ companion extension into one shared library
-# usable by the Python ctypes wrapper. Requires liblapacke-dev and libnlopt-dev
-# (and a C compiler) to be installed on the system.
+# Build libMAGEMin from a MAGEMin source tree, for developing against unreleased
+# source (users get prebuilt binaries via `magemin-install`). Runs MAGEMin's own
+# `make lib` -- requires liblapacke-dev, libnlopt-dev and a C compiler.
 #
-# MAGEMIN_SRC_DIR (default: ./MAGEMin) selects where the vendored MAGEMin
-# source lives. This script never modifies anything under it -- it only
-# builds MAGEMin's own `make lib` output, then compiles magemin_ext/ against
-# the same headers and links everything into one library. Keeping the source
-# location configurable makes it easy to later point this script at a
-# separately-downloaded/updated copy of MAGEMin without changing this file.
+# MAGEMIN_SRC_DIR (default: ./MAGEMin) selects the source tree; nothing in it is
+# touched beyond `make`'s own build output.
 #
 # SANITIZE=1 builds with AddressSanitizer + UndefinedBehaviorSanitizer instead
 # (-O1, no LTO) -- a debugging build for catching heap bugs (out-of-bounds or
@@ -20,8 +16,8 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 magemin_src="${MAGEMIN_SRC_DIR:-$repo_root/MAGEMin}"
 cc="${CC:-gcc}"
 
-# Keep in sync with MIN_MAGEMIN_VERSION in src/magemin/_download.py.
-min_version="2.0.7"
+# Keep in sync with _MIN_SOURCE_VERSION in src/magemin/_download.py.
+min_version="2.0.8"
 version="$(grep -oE 'strcpy\(gv\.version,"[0-9]+\.[0-9]+\.[0-9]+' "$magemin_src/src/initialize.c" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+$' || true)"
 if [[ -z "$version" ]]; then
     echo "warning: could not determine the MAGEMin version; versions older than $min_version are unsupported" >&2
@@ -30,45 +26,30 @@ elif [[ "$(printf '%s\n%s\n' "$min_version" "$version" | sort -V | head -n1)" !=
     exit 1
 fi
 
-ccflags="-Wall -O3 -g -fPIC -Wno-unused-variable -Wno-unused-but-set-variable -march=native -funroll-loops"
+make_args=(USE_MPI=0 CC="$cc")
 san=""
-lto="-flto"
 if [[ "${SANITIZE:-0}" == "1" ]]; then
     san="-fsanitize=address,undefined -fno-omit-frame-pointer"
-    ccflags="-Wall -O1 -g -fPIC -Wno-unused-variable -Wno-unused-but-set-variable $san"
-    lto=""
+    make_args+=(CCFLAGS="-Wall -O1 -g -fPIC -Wno-unused-variable -Wno-unused-but-set-variable $san")
+    if [[ "$(uname -s)" == "Darwin" ]]; then
+        make_args+=(LIBS="-lm -framework Accelerate /opt/homebrew/lib/libnlopt.dylib $san")
+    else
+        make_args+=(LIBS="-lm -llapacke -lnlopt -L/usr/lib $san")
+    fi
 fi
 
 cd "$magemin_src"
 make clean
-make lib USE_MPI=0 CC="$cc" CCFLAGS="$ccflags"
-# `make lib`'s own link output is superseded by our relink below (we only
-# needed its side effect: the vendored .o files, which `lib:` -- unlike
-# `all:` -- does not clean up afterward).
-rm -f libMAGEMin.dylib
+make lib "${make_args[@]}"
 
-inc=""
-if [[ "$(uname -s)" == "Darwin" ]]; then
-    inc="-I/opt/homebrew/include"
-fi
-
-"$cc" $ccflags -c "$repo_root/src/magemin/magemin_ext/magemin_ext.c" \
-    -I"$magemin_src/src" -I"$repo_root/src/magemin/magemin_ext" \
-    -o "$repo_root/src/magemin/magemin_ext/magemin_ext.o" $inc
-
-vendored_objects=$(find "$magemin_src/src" -name '*.o')
-
+# `make lib` always names its output libMAGEMin.dylib, even on Linux.
 if [[ "$(uname -s)" == "Linux" ]]; then
     out="$magemin_src/libMAGEMin.so"
-    libs="-lm -llapacke -lnlopt -L/usr/lib"
+    mv libMAGEMin.dylib "$out"
 else
     out="$magemin_src/libMAGEMin.dylib"
-    libs="-lm -framework Accelerate /opt/homebrew/lib/libnlopt.dylib"
 fi
-
-"$cc" -shared -fPIC -o "$out" \
-    $vendored_objects "$repo_root/src/magemin/magemin_ext/magemin_ext.o" \
-    $inc $libs $san $lto
+find "$magemin_src/src" -name '*.o' -delete
 
 echo "Built: $out"
 if [[ -n "$san" ]]; then

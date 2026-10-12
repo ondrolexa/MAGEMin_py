@@ -13,11 +13,9 @@ from pathlib import Path
 from magemin.errors import MAGEMinLibraryNotFoundError
 
 _BUILD_INSTRUCTIONS = (
-    "libMAGEMin could not be found. Build it with `./scripts/build_lib.sh` "
-    "(requires the `liblapacke-dev` and `libnlopt-dev` system packages and a C "
-    "compiler), or run `magemin-install` to download and build MAGEMin "
-    "automatically, or point the MAGEMIN_LIB_PATH environment variable at an "
-    "already-built libMAGEMin.so/.dylib/.dll."
+    "libMAGEMin could not be found. Run `magemin-install` to download the prebuilt MAGEMin "
+    "library, or point the MAGEMIN_LIB_PATH environment variable at an already-built "
+    "libMAGEMin.so/.dylib/.dll."
 )
 
 
@@ -218,6 +216,50 @@ class StbSystem(ctypes.Structure):
     ]
 
 
+class FnKKT(ctypes.Structure):
+    """Mirrors C ``fn_kkt`` (the final Newton system at the converged state).
+
+    Array lengths are set by ``fn_kkt_store`` in ``PGE_function.c``: ``ox_id[m]``,
+    ``ss_id``/``cp_id[n_ph]``, ``pp_id[n_pp]``, ``off_*[n_ph + 1]``, ``c_x``/``c_b``/``mu[n_cc]``,
+    ``n``/``drop[n_ph + n_pp]``, ``gam[nOx]``, ``s[n_s]``, ``Nb[n_Nb]``, ``R[nz]``, and
+    ``J[nz * nz]`` (column-major). The ``cap_*`` fields are allocation capacities only.
+    """
+
+    _fields_ = [
+        ("stored", ctypes.c_int),
+        ("nz", ctypes.c_int),
+        ("m", ctypes.c_int),
+        ("n_y", ctypes.c_int),
+        ("n_cc", ctypes.c_int),
+        ("n_ph", ctypes.c_int),
+        ("n_pp", ctypes.c_int),
+        ("n_s", ctypes.c_int),
+        ("n_Nb", ctypes.c_int),
+        ("cap_nz", ctypes.c_int),
+        ("cap_s", ctypes.c_int),
+        ("cap_Nb", ctypes.c_int),
+        ("ox_id", ctypes.POINTER(ctypes.c_int)),
+        ("ss_id", ctypes.POINTER(ctypes.c_int)),
+        ("cp_id", ctypes.POINTER(ctypes.c_int)),
+        ("pp_id", ctypes.POINTER(ctypes.c_int)),
+        ("off_y", ctypes.POINTER(ctypes.c_int)),
+        ("off_s", ctypes.POINTER(ctypes.c_int)),
+        ("off_N", ctypes.POINTER(ctypes.c_int)),
+        ("off_c", ctypes.POINTER(ctypes.c_int)),
+        ("c_x", ctypes.POINTER(ctypes.c_int)),
+        ("drop", ctypes.POINTER(ctypes.c_int)),
+        ("c_b", ctypes.POINTER(ctypes.c_double)),
+        ("Nb", ctypes.POINTER(ctypes.c_double)),
+        ("s", ctypes.POINTER(ctypes.c_double)),
+        ("gam", ctypes.POINTER(ctypes.c_double)),
+        ("n", ctypes.POINTER(ctypes.c_double)),
+        ("mu", ctypes.POINTER(ctypes.c_double)),
+        ("R", ctypes.POINTER(ctypes.c_double)),
+        ("J", ctypes.POINTER(ctypes.c_double)),
+        ("G", ctypes.c_double),
+    ]
+
+
 def _candidate_paths() -> list[Path]:
     """List conventional locations to search for the compiled library."""
     repo_root = Path(__file__).resolve().parents[2]
@@ -240,59 +282,75 @@ def _cache_candidate_paths() -> list[Path]:
     ]
 
 
+# The phase-suppression/solver/buffer/phase-name/final-Newton part of MAGEMin_api.h, absent from
+# older libMAGEMin builds -- checked on load so an old library fails clearly instead of mid-call.
+_REQUIRED_API = (
+    "MAGEMin_SetSolver",
+    "MAGEMin_SetSSSolver",
+    "MAGEMin_SetFinalNewtonStep",
+    "MAGEMin_SetStoreKKT",
+    "MAGEMin_GetFinalNewtonSystem",
+    "MAGEMin_SetBuffer",
+    "MAGEMin_SetSuppressedPhases",
+    "MAGEMin_NSolutionPhases",
+    "MAGEMin_SolutionPhaseNames",
+    "MAGEMin_NPurePhases",
+    "MAGEMin_PurePhaseNames",
+)
+
+
 def _load(path: str | Path) -> ctypes.CDLL:
     lib = ctypes.CDLL(str(path))
+    missing = [name for name in _REQUIRED_API if not hasattr(lib, name)]
+    if missing:
+        raise MAGEMinLibraryNotFoundError(
+            f"{path} lacks the MAGEMin C API this package needs (missing {', '.join(missing)}); "
+            "it is too old -- install a newer MAGEMin (>= 2.0.8) with `magemin-install`."
+        )
+
+    handle_p = ctypes.POINTER(MAGEMin_Handle)
     lib.MAGEMin_Init.argtypes = [ctypes.c_char_p, ctypes.c_int]
-    lib.MAGEMin_Init.restype = ctypes.POINTER(MAGEMin_Handle)
-    lib.MAGEMin_NOxides.argtypes = [ctypes.POINTER(MAGEMin_Handle)]
+    lib.MAGEMin_Init.restype = handle_p
+    lib.MAGEMin_NOxides.argtypes = [handle_p]
     lib.MAGEMin_NOxides.restype = ctypes.c_int
-    lib.MAGEMin_OxideNames.argtypes = [ctypes.POINTER(MAGEMin_Handle)]
+    lib.MAGEMin_OxideNames.argtypes = [handle_p]
     lib.MAGEMin_OxideNames.restype = ctypes.POINTER(ctypes.c_char_p)
+    lib.MAGEMin_SetSolver.argtypes = [handle_p, ctypes.c_int]
+    lib.MAGEMin_SetSolver.restype = ctypes.c_int
+    lib.MAGEMin_SetSSSolver.argtypes = [handle_p, ctypes.c_int]
+    lib.MAGEMin_SetSSSolver.restype = ctypes.c_int
+    lib.MAGEMin_SetFinalNewtonStep.argtypes = [handle_p, ctypes.c_int]
+    lib.MAGEMin_SetFinalNewtonStep.restype = ctypes.c_int
+    lib.MAGEMin_SetStoreKKT.argtypes = [handle_p, ctypes.c_int]
+    lib.MAGEMin_SetStoreKKT.restype = ctypes.c_int
+    lib.MAGEMin_GetFinalNewtonSystem.argtypes = [handle_p]
+    lib.MAGEMin_GetFinalNewtonSystem.restype = ctypes.POINTER(FnKKT)
+    lib.MAGEMin_SetBuffer.argtypes = [handle_p, ctypes.c_char_p, ctypes.c_double]
+    lib.MAGEMin_SetBuffer.restype = ctypes.c_int
+    lib.MAGEMin_SetSuppressedPhases.argtypes = [
+        handle_p,
+        ctypes.POINTER(ctypes.c_char_p),
+        ctypes.c_int,
+    ]
+    lib.MAGEMin_SetSuppressedPhases.restype = ctypes.c_int
+    lib.MAGEMin_NSolutionPhases.argtypes = [handle_p]
+    lib.MAGEMin_NSolutionPhases.restype = ctypes.c_int
+    lib.MAGEMin_SolutionPhaseNames.argtypes = [handle_p]
+    lib.MAGEMin_SolutionPhaseNames.restype = ctypes.POINTER(ctypes.c_char_p)
+    lib.MAGEMin_NPurePhases.argtypes = [handle_p]
+    lib.MAGEMin_NPurePhases.restype = ctypes.c_int
+    lib.MAGEMin_PurePhaseNames.argtypes = [handle_p]
+    lib.MAGEMin_PurePhaseNames.restype = ctypes.POINTER(ctypes.c_char_p)
     lib.MAGEMin_ComputeEquilibrium.argtypes = [
-        ctypes.POINTER(MAGEMin_Handle),
+        handle_p,
         ctypes.c_double,
         ctypes.c_double,
         ctypes.POINTER(ctypes.c_double),
         ctypes.c_char_p,
     ]
     lib.MAGEMin_ComputeEquilibrium.restype = ctypes.POINTER(StbSystem)
-    lib.MAGEMin_Free.argtypes = [ctypes.POINTER(MAGEMin_Handle)]
+    lib.MAGEMin_Free.argtypes = [handle_p]
     lib.MAGEMin_Free.restype = None
-
-    # magemin_ext/ additions: buffer/activity fixing, phase suppression,
-    # sb/gh database support, and phase-name discovery. See magemin_ext.h.
-    lib.MAGEMin_InitEx.argtypes = [
-        ctypes.c_char_p,
-        ctypes.c_char_p,
-        ctypes.c_int,
-        ctypes.c_int,
-    ]
-    lib.MAGEMin_InitEx.restype = ctypes.POINTER(MAGEMin_Handle)
-    lib.MAGEMin_SetBuffer.argtypes = [
-        ctypes.POINTER(MAGEMin_Handle),
-        ctypes.c_char_p,
-        ctypes.c_double,
-    ]
-    lib.MAGEMin_SetBuffer.restype = ctypes.c_int
-    lib.MAGEMin_ComputeEquilibriumEx.argtypes = [
-        ctypes.POINTER(MAGEMin_Handle),
-        ctypes.c_double,
-        ctypes.c_double,
-        ctypes.POINTER(ctypes.c_double),
-        ctypes.c_char_p,
-        ctypes.POINTER(ctypes.c_char_p),
-        ctypes.c_int,
-    ]
-    lib.MAGEMin_ComputeEquilibriumEx.restype = ctypes.POINTER(StbSystem)
-    lib.MAGEMin_NSolutionPhases.argtypes = [ctypes.POINTER(MAGEMin_Handle)]
-    lib.MAGEMin_NSolutionPhases.restype = ctypes.c_int
-    lib.MAGEMin_SolutionPhaseNames.argtypes = [ctypes.POINTER(MAGEMin_Handle)]
-    lib.MAGEMin_SolutionPhaseNames.restype = ctypes.POINTER(ctypes.c_char_p)
-    lib.MAGEMin_NPurePhases.argtypes = [ctypes.POINTER(MAGEMin_Handle)]
-    lib.MAGEMin_NPurePhases.restype = ctypes.c_int
-    lib.MAGEMin_PurePhaseNames.argtypes = [ctypes.POINTER(MAGEMin_Handle)]
-    lib.MAGEMin_PurePhaseNames.restype = ctypes.POINTER(ctypes.c_char_p)
-
     return lib
 
 
@@ -303,12 +361,12 @@ def get_library() -> ctypes.CDLL:
     """Return the loaded ``libMAGEMin`` library, loading it on first use.
 
     Returns:
-        The loaded library with the 5 ``MAGEMin_api.h`` functions and the 7
-        ``magemin_ext.h`` functions wired up.
+        The loaded library with every ``MAGEMin_api.h`` function wired up.
 
     Raises:
-        MAGEMinLibraryNotFoundError: If the library cannot be located, or
-            ``MAGEMIN_LIB_PATH`` is set but does not point at a loadable library.
+        MAGEMinLibraryNotFoundError: If the library cannot be located,
+            ``MAGEMIN_LIB_PATH`` is set but does not point at a loadable library, or the
+            library found predates the C API this package needs.
     """
     global _library
     if _library is not None:

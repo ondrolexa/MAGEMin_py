@@ -8,19 +8,19 @@ class MAGEMinError(Exception):
 class MAGEMinLibraryNotFoundError(MAGEMinError):
     """Raised when the compiled ``libMAGEMin`` shared library cannot be located.
 
-    See the package README for how to build the library (``scripts/build_lib.sh``)
-    and how to point the loader at a non-default location via the
-    ``MAGEMIN_LIB_PATH`` environment variable.
+    Also raised when the library found predates the C API this package needs. See
+    the package README for installing it (``magemin-install``) and for pointing the
+    loader at a non-default location via the ``MAGEMIN_LIB_PATH`` environment variable.
     """
 
 
 class MAGEMinDownloadError(MAGEMinError):
-    """Raised when downloading or building the MAGEMin C library from source fails.
+    """Raised when downloading (or building from source) the MAGEMin C library fails.
 
     Covers an HTTP 404 (the requested version/branch/commit doesn't exist
-    upstream), other network failures, ``make``/``cc`` missing from ``PATH``,
-    and a non-zero exit from any build step (with its captured output
-    included in the message).
+    upstream), other network failures, a checksum mismatch or missing platform
+    in a prebuilt download, and, for source builds, ``make``/``cc`` missing from
+    ``PATH`` or a non-zero exit from a build step (with its captured output).
     """
 
 
@@ -28,7 +28,8 @@ class MAGEMinInitError(MAGEMinError):
     """Raised when a database handle cannot be created.
 
     Covers an unrecognized database acronym (rejected before reaching the C
-    library) and a ``NULL`` return from ``MAGEMin_InitEx``.
+    library), a ``NULL`` return from ``MAGEMin_Init``, and a ``solver`` rejected by
+    ``MAGEMin_SetSolver``.
     """
 
 
@@ -39,9 +40,9 @@ class MAGEMinComputeError(MAGEMinError):
     ``buffer``/``buffer_value`` given without its pair, an out-of-range
     fixed-activity ``buffer_value``, a ``buffer`` rejected by
     ``MAGEMin_SetBuffer`` (valid name, but not registered for this
-    database/research group), and a ``NULL`` return from
-    ``MAGEMin_ComputeEquilibriumEx`` (including an unrecognized
-    ``suppress_phases`` name) -- all rejected before or by the C library.
+    database/research group), an unrecognized ``suppress_phases`` name (rejected
+    by ``MAGEMin_SetSuppressedPhases``), and a ``NULL`` return from
+    ``MAGEMin_ComputeEquilibrium`` -- all rejected before or by the C library.
     """
 
 

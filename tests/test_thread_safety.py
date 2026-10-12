@@ -1,7 +1,7 @@
 """Regression tests for concurrent MAGEMin use across threads.
 
-magemin_ext.c adds no locking of its own: concurrent MAGEMin_InitEx/
-MAGEMin_ComputeEquilibriumEx calls rely on MAGEMin keeping its EM/DEW/PP endmember-lookup
+The Python wrapper adds no locking of its own: concurrent MAGEMin_Init/
+MAGEMin_ComputeEquilibrium calls rely on MAGEMin keeping its EM/DEW/PP endmember-lookup
 tables in an append-only per-(research group, dataset) registry. A single pytest run can't
 reliably catch an intermittent heap corruption, so these are bounded regression guards.
 """

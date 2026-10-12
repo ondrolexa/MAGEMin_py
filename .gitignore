@@ -20,5 +20,16 @@ uv.lock
 # Built docs site
 /site/
 
-# Build artifacts from scripts/build_lib.sh.
-/src/magemin/magemin_ext/*.o
+# Build artifacts from scripts/build_lib.sh. MAGEMin/'s own .gitignore covers most of
+# MAGEMin/'s build output, but not reliably across vendored versions (a released version
+# has been observed to drop its *.o.tmp/libMAGEMin.so entries present in an earlier
+# snapshot) -- listed explicitly here too so a rebuild never becomes accidentally
+# committable regardless of what the vendored .gitignore currently contains.
+MAGEMin/libMAGEMin.so
+MAGEMin/libMAGEMin.dylib
+MAGEMin/libMAGEMin.dll
+MAGEMin/src/**/*.o
+MAGEMin/src/**/*.o.tmp
+
+# macOS Finder metadata (some ship inside the vendored MAGEMin tree)
+.DS_Store

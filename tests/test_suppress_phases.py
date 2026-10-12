@@ -1,4 +1,6 @@
-"""Tests for phase suppression (magemin_ext's MAGEMin_ComputeEquilibriumEx)."""
+"""Tests for phase suppression (MAGEMin_api.h's MAGEMin_SetSuppressedPhases)."""
+
+import ctypes
 
 import pytest
 
@@ -38,7 +40,7 @@ def test_suppressing_ilm_lets_ilmm_take_its_place(require_library: None) -> None
     ("mp"'s "ilm") ever gets pseudocompounds generated at all, so suppressing
     it via suppress_phases previously left the other variant ("ilmm")
     unreachable even though it was never actually excluded, just never
-    generated. MAGEMin_ComputeEquilibriumEx now sets these to 2 ("activate
+    generated. MAGEMin_ComputeEquilibrium sets these to 2 ("activate
     both variants") whenever any phase is suppressed, matching
     MAGEMin_C.jl's own point_wise_minimization.
     """
@@ -80,6 +82,43 @@ def test_suppress_unknown_name_raises(ig: MAGEMin) -> None:
     """An unrecognized phase name to suppress raises."""
     with pytest.raises(MAGEMinComputeError):
         ig.compute(P=8, T=800, bulk=bulk_rocks.KLB1_IG, suppress_phases=["not_a_phase"])
+
+
+def test_suppression_does_not_carry_over_to_the_next_call(ig: MAGEMin) -> None:
+    """The C handle keeps its suppressed set, so compute() must clear it on every call."""
+    ig.compute(P=8, T=800, bulk=bulk_rocks.KLB1_IG, suppress_phases=["spl"])
+    result = ig.compute(P=8, T=800, bulk=bulk_rocks.KLB1_IG)
+
+    assert "spl" in result.ph
+
+
+def test_rejected_suppression_leaves_the_handle_usable(ig: MAGEMin) -> None:
+    """After an unknown-name error, the next unsuppressed call is unaffected."""
+    baseline = ig.compute(P=8, T=800, bulk=bulk_rocks.KLB1_IG)
+    with pytest.raises(MAGEMinComputeError):
+        ig.compute(P=8, T=800, bulk=bulk_rocks.KLB1_IG, suppress_phases=["spl", "nope"])
+
+    assert ig.compute(P=8, T=800, bulk=bulk_rocks.KLB1_IG).ph == baseline.ph
+
+
+def test_c_api_rejected_set_keeps_the_previous_one(ig: MAGEMin) -> None:
+    """MAGEMin_SetSuppressedPhases validates every name before replacing the stored set."""
+    lib, handle = ig._lib, ig._handle
+
+    def set_suppressed(*names: str) -> int:
+        array = (ctypes.c_char_p * len(names))(*(name.encode() for name in names))
+        return lib.MAGEMin_SetSuppressedPhases(handle, array, len(names))
+
+    assert set_suppressed("spl") == 0
+    assert set_suppressed("ol", "nope") == -1
+
+    bulk = (ctypes.c_double * ig.n_oxides)(*bulk_rocks.KLB1_IG.values)
+    sys_in = bulk_rocks.KLB1_IG.sys_in.encode()
+    phases = lib.MAGEMin_ComputeEquilibrium(handle, 8.0, 800.0, bulk, sys_in).contents
+    names = {phases.ph[i].decode() for i in range(phases.n_ph)}
+
+    assert "spl" not in names
+    assert "ol" in names
 
 
 def test_solution_phase_names_and_pure_phase_names(ig: MAGEMin) -> None:

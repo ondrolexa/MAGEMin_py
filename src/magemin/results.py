@@ -341,6 +341,127 @@ class PurePhase:
 
 
 @dataclass(frozen=True, slots=True)
+class FinalNewtonSystem:
+    """The final Newton (KKT) system at the converged equilibrium.
+
+    Only produced by `MAGEMin.compute(..., store_kkt=True)`, and only when the
+    final Newton polish (`MAGEMin(final_newton_step=True)`, the default) was
+    accepted -- see `EquilibriumResult.final_newton_system`.
+
+    The system has `nz = m + n_y + n_cc + n_ph + n_pp` unknowns, ordered as the
+    chemical potentials of the `m` oxides present in the bulk (`ox_id`), the
+    `n_y` reduced (nullspace) compositional coordinates of the stable solution
+    phases (phase `q` owns `off_y[q]:off_y[q + 1]`), the `n_cc` Lagrange
+    multipliers of compositional variables held at a bound (`off_c`), the
+    `n_ph` solution-phase amounts, and the `n_pp` pure-phase amounts. Its
+    `nz` equations (`residual`/`jacobian` rows) are ordered as the `n_y`
+    stationarity conditions, the `n_cc` active bound constraints, the `n_ph`
+    solution-phase and `n_pp` pure-phase driving forces (`n = 0` instead for a
+    `drop`ped phase), and the `m` mass-balance conditions.
+
+    Attributes:
+        nz: Size of the system (number of unknowns and of equations).
+        m: Number of oxides present in the bulk composition.
+        n_y: Number of reduced compositional coordinates, over all stable
+            solution phases.
+        n_cc: Number of compositional variables held at a bound.
+        n_ph: Number of stable solution phases.
+        n_pp: Number of stable pure phases.
+        ox_id: Index (into `EquilibriumResult.oxides`) of each of the `m`
+            oxides, length `m`.
+        ss_id: Database index (into `MAGEMin.solution_phase_names`) of each
+            stable solution phase, length `n_ph`.
+        cp_id: Internal considered-phase index of each stable solution phase,
+            length `n_ph`.
+        pp_id: Database index (into `MAGEMin.pure_phase_names`) of each stable
+            pure phase, length `n_pp`.
+        off_y: Per-solution-phase offsets into the reduced coordinates,
+            length `n_ph + 1`.
+        off_s: Per-solution-phase offsets into `s`, length `n_ph + 1`.
+        off_n: Per-solution-phase offsets into `nb`, length `n_ph + 1`.
+        off_c: Per-solution-phase offsets into the bound constraints
+            (`c_x`/`c_b`/`mu`), length `n_ph + 1`.
+        c_x: Index of the compositional variable held at a bound, per bound
+            constraint, length `n_cc`.
+        c_b: Bound value of that compositional variable, length `n_cc`.
+        mu: Lagrange multiplier of each bound constraint, length `n_cc`.
+        drop: Per phase (solution phases, then pure phases), `1` if its
+            amount is held at zero, length `n_ph + n_pp`.
+        n: Phase amounts (solution phases, then pure phases), length
+            `n_ph + n_pp`.
+        s: Converged compositional state of each solution phase,
+            concatenated (see `off_s`).
+        nb: Nullspace basis of each solution phase, concatenated and
+            row-major per phase (see `off_n`).
+        gamma: Chemical potentials of all oxide components, length
+            `EquilibriumResult.n_ox` (equal to `EquilibriumResult.gamma`).
+        residual: Residual of each equation, length `nz`.
+        jacobian: Jacobian of the system, `nz` rows (equations) of `nz`
+            columns (unknowns).
+        g: Gibbs energy of the system at the converged state.
+    """
+
+    nz: int
+    m: int
+    n_y: int
+    n_cc: int
+    n_ph: int
+    n_pp: int
+    ox_id: tuple[int, ...]
+    ss_id: tuple[int, ...]
+    cp_id: tuple[int, ...]
+    pp_id: tuple[int, ...]
+    off_y: tuple[int, ...]
+    off_s: tuple[int, ...]
+    off_n: tuple[int, ...]
+    off_c: tuple[int, ...]
+    c_x: tuple[int, ...]
+    c_b: tuple[float, ...]
+    mu: tuple[float, ...]
+    drop: tuple[int, ...]
+    n: tuple[float, ...]
+    s: tuple[float, ...]
+    nb: tuple[float, ...]
+    gamma: tuple[float, ...]
+    residual: tuple[float, ...]
+    jacobian: tuple[tuple[float, ...], ...]
+    g: float
+
+    @classmethod
+    def _from_c(cls, c: _lib.FnKKT, n_ox: int) -> FinalNewtonSystem:
+        """Deep-copy an ``fn_kkt`` struct; `n_ox` is the length of its ``gam`` array."""
+        nz, n_ph, n_pp = c.nz, c.n_ph, c.n_pp
+        flat = _c_double_array(c.J, nz * nz)  # column-major: J[col * nz + row]
+        return cls(
+            nz=nz,
+            m=c.m,
+            n_y=c.n_y,
+            n_cc=c.n_cc,
+            n_ph=n_ph,
+            n_pp=n_pp,
+            ox_id=_c_int_array(c.ox_id, c.m),
+            ss_id=_c_int_array(c.ss_id, n_ph),
+            cp_id=_c_int_array(c.cp_id, n_ph),
+            pp_id=_c_int_array(c.pp_id, n_pp),
+            off_y=_c_int_array(c.off_y, n_ph + 1),
+            off_s=_c_int_array(c.off_s, n_ph + 1),
+            off_n=_c_int_array(c.off_N, n_ph + 1),
+            off_c=_c_int_array(c.off_c, n_ph + 1),
+            c_x=_c_int_array(c.c_x, c.n_cc),
+            c_b=_c_double_array(c.c_b, c.n_cc),
+            mu=_c_double_array(c.mu, c.n_cc),
+            drop=_c_int_array(c.drop, n_ph + n_pp),
+            n=_c_double_array(c.n, n_ph + n_pp),
+            s=_c_double_array(c.s, c.n_s),
+            nb=_c_double_array(c.Nb, c.n_Nb),
+            gamma=_c_double_array(c.gam, n_ox),
+            residual=_c_double_array(c.R, nz),
+            jacobian=tuple(flat[row::nz] for row in range(nz)) if flat else (),
+            g=c.G,
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class EquilibriumResult:
     """The stable equilibrium phase assemblage at one (P, T, bulk) point.
 
@@ -461,6 +582,9 @@ class EquilibriumResult:
             length `n_mss`. Empty when `compute()`'s `light=True` was used.
         pure_phases: Detailed per-pure-phase results, length `n_pp`. Empty
             when `compute()`'s `light=True` was used.
+        final_newton_system: The final Newton (KKT) system at the converged
+            state, only when `compute()`'s `store_kkt=True` was used and the
+            final Newton polish was accepted; `None` otherwise.
     """
 
     magemin_version: str
@@ -548,10 +672,16 @@ class EquilibriumResult:
     solution_phases: tuple[SolutionPhase, ...] = field(default_factory=tuple)
     metastable_phases: tuple[MetastableSolutionPhase, ...] = field(default_factory=tuple)
     pure_phases: tuple[PurePhase, ...] = field(default_factory=tuple)
+    final_newton_system: FinalNewtonSystem | None = None
 
     @classmethod
     def _from_c(
-        cls, c: _lib.StbSystem, *, light: bool = False, name_solvus: bool = True
+        cls,
+        c: _lib.StbSystem,
+        *,
+        light: bool = False,
+        name_solvus: bool = True,
+        final_newton_system: FinalNewtonSystem | None = None,
     ) -> EquilibriumResult:
         """Deep-copy a ``stb_system`` struct (and its nested phase arrays).
 
@@ -568,6 +698,8 @@ class EquilibriumResult:
                 using each phase's compositional variables read directly from
                 `c` -- independent of `light`, since it never depends on
                 `solution_phases` being populated.
+            final_newton_system: Already-copied final Newton system to attach,
+                if any.
         """
         n_ox, n_ph = c.nOx, c.n_ph
         n_pp, n_ss, n_mss = c.n_PP, c.n_SS, c.n_mSS
@@ -683,6 +815,7 @@ class EquilibriumResult:
             solution_phases=solution_phases,
             metastable_phases=metastable_phases,
             pure_phases=pure_phases,
+            final_newton_system=final_newton_system,
         )
 
     def __str__(self) -> str:

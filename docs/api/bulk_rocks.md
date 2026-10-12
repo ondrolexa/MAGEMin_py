@@ -1,7 +1,7 @@
 # Predefined bulk rocks
 
-Values are transcribed directly from the `get_bulk_*` functions in the vendored
-`MAGEMin/src/TC_database/TC_init_database.c` (the same tables the MAGEMin CLI's built-in `--test`
+Values are transcribed directly from the `get_bulk_*` functions in MAGEMin's
+`src/TC_database/TC_init_database.c` (the same tables the MAGEMin CLI's built-in `--test`
 compositions use). This module has no C dependency and can be imported without a built
 `libMAGEMin` library.
 

@@ -11,6 +11,7 @@ the optional `plot` extra instead).
 
 from __future__ import annotations
 
+import functools
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal
@@ -82,6 +83,10 @@ class Pseudosection:
             that attribute does, so it isn't called `max_depth` here).
         solver: The `solver` this pseudosection was computed with. Used by `refine()` so newly
             computed points stay consistent with the rest of the mesh.
+        optimizer: The `optimizer` this pseudosection was computed with, reused by `refine()`
+            like `solver`.
+        final_newton_step: The `final_newton_step` this pseudosection was computed with, reused
+            by `refine()` like `solver`.
     """
 
     kind: Literal["PT", "PX", "TX"]
@@ -104,6 +109,8 @@ class Pseudosection:
     # bulk/buffer/suppress_phases/etc, none of which are otherwise retained on this dataclass)
     # needed to compute further points in refine().
     _mapping: _diagrams._AxisMapping = field(repr=False)
+    optimizer: int = 0
+    final_newton_step: bool = True
 
     def __str__(self) -> str:
         """Return a human-readable summary."""
@@ -138,6 +145,8 @@ class Pseudosection:
         initial_resolution: int,
         refine: int,
         solver: int,
+        optimizer: int,
+        final_newton_step: bool,
         state: _mesh._MeshState,
     ) -> Pseudosection:
         """Assemble a `Pseudosection` from a `_mesh.refine_mesh()` result."""
@@ -162,6 +171,8 @@ class Pseudosection:
             rounds=refine,
             solver=solver,
             _mapping=mapping,
+            optimizer=optimizer,
+            final_newton_step=final_newton_step,
         )
 
     @classmethod
@@ -186,6 +197,8 @@ class Pseudosection:
         max_workers: int | None,
         verbose: bool,
         solver: int,
+        optimizer: int,
+        final_newton_step: bool,
     ) -> Pseudosection:
         state = _mesh.refine_mesh(
             database,
@@ -199,7 +212,11 @@ class Pseudosection:
             max_workers=max_workers,
             verbose=verbose,
             solver=solver,
-            batch_fn=multi_point_minimization,
+            batch_fn=functools.partial(
+                multi_point_minimization,
+                optimizer=optimizer,
+                final_newton_step=final_newton_step,
+            ),
         )
         return cls._from_state(
             kind=kind,
@@ -214,6 +231,8 @@ class Pseudosection:
             initial_resolution=initial_resolution,
             refine=refine,
             solver=solver,
+            optimizer=optimizer,
+            final_newton_step=final_newton_step,
             state=state,
         )
 
@@ -240,6 +259,8 @@ class Pseudosection:
         max_workers: int | None = None,
         verbose: bool = False,
         solver: int = 2,
+        optimizer: int = 0,
+        final_newton_step: bool = True,
     ) -> Pseudosection:
         """Compute an adaptive Delaunay-mesh pressure-temperature pseudosection.
 
@@ -272,6 +293,8 @@ class Pseudosection:
             max_workers: As for `multi_point_minimization`.
             verbose: As for `multi_point_minimization`.
             solver: As for `MAGEMin.__init__`.
+            optimizer: As for `MAGEMin.__init__`.
+            final_newton_step: As for `MAGEMin.__init__`.
 
         Returns:
             The computed pseudosection.
@@ -309,6 +332,8 @@ class Pseudosection:
             max_workers=max_workers,
             verbose=verbose,
             solver=solver,
+            optimizer=optimizer,
+            final_newton_step=final_newton_step,
         )
 
     @classmethod
@@ -335,6 +360,8 @@ class Pseudosection:
         max_workers: int | None = None,
         verbose: bool = False,
         solver: int = 2,
+        optimizer: int = 0,
+        final_newton_step: bool = True,
     ) -> Pseudosection:
         """Compute an adaptive Delaunay-mesh PX pseudosection at fixed temperature.
 
@@ -364,6 +391,8 @@ class Pseudosection:
             max_workers: As for `multi_point_minimization`.
             verbose: As for `multi_point_minimization`.
             solver: As for `MAGEMin.__init__`.
+            optimizer: As for `MAGEMin.__init__`.
+            final_newton_step: As for `MAGEMin.__init__`.
 
         Returns:
             The computed pseudosection.
@@ -399,6 +428,8 @@ class Pseudosection:
             max_workers=max_workers,
             verbose=verbose,
             solver=solver,
+            optimizer=optimizer,
+            final_newton_step=final_newton_step,
         )
 
     @classmethod
@@ -425,6 +456,8 @@ class Pseudosection:
         max_workers: int | None = None,
         verbose: bool = False,
         solver: int = 2,
+        optimizer: int = 0,
+        final_newton_step: bool = True,
     ) -> Pseudosection:
         """Compute an adaptive Delaunay-mesh TX pseudosection at fixed pressure.
 
@@ -454,6 +487,8 @@ class Pseudosection:
             max_workers: As for `multi_point_minimization`.
             verbose: As for `multi_point_minimization`.
             solver: As for `MAGEMin.__init__`.
+            optimizer: As for `MAGEMin.__init__`.
+            final_newton_step: As for `MAGEMin.__init__`.
 
         Returns:
             The computed pseudosection.
@@ -489,6 +524,8 @@ class Pseudosection:
             max_workers=max_workers,
             verbose=verbose,
             solver=solver,
+            optimizer=optimizer,
+            final_newton_step=final_newton_step,
         )
 
     def refine(
@@ -533,7 +570,11 @@ class Pseudosection:
             max_workers=max_workers,
             verbose=verbose,
             solver=self.solver,
-            batch_fn=multi_point_minimization,
+            batch_fn=functools.partial(
+                multi_point_minimization,
+                optimizer=self.optimizer,
+                final_newton_step=self.final_newton_step,
+            ),
             initial_points=initial_points,
             initial_results=initial_results,
         )
@@ -550,6 +591,8 @@ class Pseudosection:
             initial_resolution=self.initial_resolution,
             refine=refine,
             solver=self.solver,
+            optimizer=self.optimizer,
+            final_newton_step=self.final_newton_step,
             state=state,
         )
 

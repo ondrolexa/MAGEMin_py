@@ -167,6 +167,30 @@ what's requested -- those only support the legacy solver upstream. Avoid `solver
 "metastable calculation, no minimization" diagnostic mode, not a normal alternate equilibrium
 solver, and can return duplicate phase-name entries in `ph` rather than a single converged answer.
 
+### Solution-phase optimizer and final Newton step
+
+Two more per-handle options, accepted wherever `solver` is:
+
+- `optimizer` picks the local minimizer of the solution phases used by the legacy solver
+  (`solver=0`) for the `tc`- and `sb`-family databases: `0` (NLopt, the default), `1` (nullspace
+  minimizer with NLopt fallback) or `2` (both, keeping the lower Gibbs energy). With `1`/`2`, oxides
+  set exactly to zero are removed from the system, so systems below FMAS can be computed directly:
+
+  ```python
+  with MAGEMin("ig", solver=0, optimizer=1) as mg:
+      bulk = {"SiO2": 45.0, "Al2O3": 10.0, "CaO": 8.0, "MgO": 35.0}  # CMAS
+      result = mg.compute(10, 1200, [bulk.get(ox, 0.0) for ox in mg.oxide_names], "mol")
+  ```
+
+- `final_newton_step` (default `True`) polishes the converged assemblage with a Newton step that
+  solves its equilibrium conditions to machine precision; the solver result is kept whenever it
+  does not converge. Pass `False` to get the raw solver result.
+
+`compute(..., store_kkt=True)` additionally returns that final Newton system -- Jacobian, residual,
+chemical potentials and phase amounts at the converged state -- as
+[`result.final_newton_system`][magemin.results.FinalNewtonSystem] (`None` if the polish was not
+accepted), e.g. for sensitivity analysis.
+
 ## Light mode for bulk sweeps
 
 Pass `light=True` to skip building `solution_phases`/`metastable_phases`/`pure_phases` on the

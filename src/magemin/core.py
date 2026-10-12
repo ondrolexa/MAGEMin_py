@@ -16,7 +16,7 @@ from magemin.errors import (
     MAGEMinComputeError,
     MAGEMinInitError,
 )
-from magemin.results import EquilibriumResult
+from magemin.results import EquilibriumResult, FinalNewtonSystem
 
 _VALID_SYS_IN = ("mol", "wt")
 
@@ -37,20 +37,12 @@ _GH_DATABASES = frozenset({"xMELTS", "rMELTS", "pMELTS"})
 _VALID_DATABASES = _TC_DATABASES | _SB_DATABASES
 
 
-def _research_group_for(database: str) -> str:
-    """Return the research_group ("tc"/"sb"/"gh") a database acronym belongs to."""
-    if database in _SB_DATABASES:
-        return "sb"
-    if database in _GH_DATABASES:
-        return "gh"
-    return "tc"
-
-
 _REDOX_BUFFERS = frozenset({"O2", "qfm", "mw", "qif", "nno", "hm", "iw", "cco"})
 _ACTIVITY_BUFFERS = frozenset({"aH2O", "aO2", "aMgO", "aFeO", "aAl2O3", "aTiO2"})
 _VALID_BUFFERS = _REDOX_BUFFERS | _ACTIVITY_BUFFERS
 
 _VALID_SOLVERS = frozenset({0, 1, 2, 3})
+_VALID_OPTIMIZERS = frozenset({0, 1, 2})
 
 
 class MAGEMin:
@@ -59,19 +51,22 @@ class MAGEMin:
     Wraps a single MAGEMin C handle, reusable across many `compute()` calls.
     Not safe to share a single instance across threads -- create one instance
     per thread for concurrent work (see `multi_point_minimization`). Concurrent
-    instances for the *same* database are safe (an internal lock in
-    `magemin_ext.c` guards the underlying C library's shared endmember-lookup
-    tables); concurrent instances for genuinely different databases across
-    threads are memory-safe but not guaranteed to return correct results, since
-    that lookup state is shared per-process, not per-handle -- stick to one
-    database per concurrent batch, as `multi_point_minimization` already does.
+    instances, for the same or different databases, are safe.
 
     Example:
         with MAGEMin("ig") as mg:
             result = mg.compute(P=8, T=800, bulk=bulk_rocks.KLB1_IG)
     """
 
-    def __init__(self, database: str, *, verbose: bool = False, solver: int = 2) -> None:
+    def __init__(
+        self,
+        database: str,
+        *,
+        verbose: bool = False,
+        solver: int = 2,
+        optimizer: int = 0,
+        final_newton_step: bool = True,
+    ) -> None:
         """Initialize a MAGEMin database handle.
 
         Args:
@@ -99,11 +94,28 @@ class MAGEMin:
                 the legacy solver upstream. Solvers 0 and 2 normally
                 converge to the same equilibrium; pass `2` (the default)
                 unless you're specifically comparing solvers.
+            optimizer: Local minimizer of the solution phases used by the
+                legacy solver (`solver=0`) for the `"tc"`- and `"sb"`-family
+                databases: `0` = NLopt (the default), `1` = nullspace
+                minimizer with NLopt fallback, `2` = both, keeping the lower
+                Gibbs energy. With `1`/`2`, oxides set exactly to zero in the
+                bulk are removed from the system, so systems below FMAS (e.g.
+                MS, MAS, CMAS) can be computed directly; NLopt instead raises
+                the core oxides (`SiO2`, `Al2O3`, `MgO`, `FeO`) to at least
+                1e-4. No effect with any other `solver`. Set once here, like
+                `solver`.
+            final_newton_step: Whether to polish the converged assemblage with
+                a final Newton step (`"tc"`- and `"sb"`-family databases), which
+                solves its equilibrium conditions to machine precision so that
+                chemical potentials, phase fractions and compositions are
+                mutually consistent; the solver result is kept whenever the
+                step does not converge. Set once here, like `solver`.
 
         Raises:
             MAGEMinLibraryNotFoundError: If libMAGEMin cannot be located.
             MAGEMinInitError: If `database` is unrecognized, `solver` is not
-                `0`/`1`/`2`/`3`, or the underlying init call fails.
+                `0`/`1`/`2`/`3`, `optimizer` is not `0`/`1`/`2`, or the
+                underlying init call fails.
         """
         self._closed = True  # set before anything that can raise, for __del__ safety
         if database not in _VALID_DATABASES:
@@ -114,17 +126,33 @@ class MAGEMin:
             raise MAGEMinInitError(
                 f"solver must be one of {sorted(_VALID_SOLVERS)}, got {solver!r}"
             )
-        research_group = _research_group_for(database)
+        if optimizer not in _VALID_OPTIMIZERS:
+            raise MAGEMinInitError(
+                f"optimizer must be one of {sorted(_VALID_OPTIMIZERS)}, got {optimizer!r}"
+            )
         self._lib = _lib.get_library()
-        handle = self._lib.MAGEMin_InitEx(
-            database.encode(), research_group.encode(), 1 if verbose else 0, solver
-        )
+        handle = self._lib.MAGEMin_Init(database.encode(), 1 if verbose else 0)
         if not handle:
-            raise MAGEMinInitError(f"MAGEMin_InitEx failed for database {database!r}")
+            raise MAGEMinInitError(f"MAGEMin_Init failed for database {database!r}")
         self._handle = handle
         self._closed = False
+        # 1 = ignored: "sb" databases only support the legacy solver (0).
+        if self._lib.MAGEMin_SetSolver(self._handle, solver) < 0:
+            self.close()
+            raise MAGEMinInitError(f"MAGEMin_SetSolver rejected solver={solver!r}")
+        # Like SetSolver, 1 = no effect for this research group, which is not an error.
+        if self._lib.MAGEMin_SetSSSolver(self._handle, optimizer) < 0:
+            self.close()
+            raise MAGEMinInitError(f"MAGEMin_SetSSSolver rejected optimizer={optimizer!r}")
+        if self._lib.MAGEMin_SetFinalNewtonStep(self._handle, int(final_newton_step)) < 0:
+            self.close()
+            raise MAGEMinInitError(
+                f"MAGEMin_SetFinalNewtonStep rejected final_newton_step={final_newton_step!r}"
+            )
         self._database = database
         self._solver = solver
+        self._optimizer = optimizer
+        self._final_newton_step = bool(final_newton_step)
         self._n_oxides = self._lib.MAGEMin_NOxides(self._handle)
         names_ptr = self._lib.MAGEMin_OxideNames(self._handle)
         self._oxide_names = tuple(names_ptr[i].decode() for i in range(self._n_oxides))
@@ -144,6 +172,16 @@ class MAGEMin:
     def solver(self) -> int:
         """The solver value this instance was initialized with (see `__init__`)."""
         return self._solver
+
+    @property
+    def optimizer(self) -> int:
+        """The optimizer value this instance was initialized with (see `__init__`)."""
+        return self._optimizer
+
+    @property
+    def final_newton_step(self) -> bool:
+        """Whether the final Newton polish is active (see `__init__`)."""
+        return self._final_newton_step
 
     @property
     def n_oxides(self) -> int:
@@ -178,6 +216,7 @@ class MAGEMin:
         use_phases: Sequence[str] | None = None,
         light: bool = False,
         name_solvus: bool = True,
+        store_kkt: bool = False,
     ) -> EquilibriumResult:
         """Compute the stable equilibrium phase assemblage at one (P, T) point.
 
@@ -224,6 +263,10 @@ class MAGEMin:
                 `suppress_phases`, which expects raw names -- see
                 `magemin.base_phase_name` to convert back). Works
                 independently of `light`.
+            store_kkt: If True, attach the final Newton (KKT) system at the
+                converged state as the result's `final_newton_system` (a
+                `FinalNewtonSystem`) -- left `None` if the final Newton polish
+                was not accepted or is disabled (`final_newton_step=False`).
 
         Returns:
             The computed equilibrium result.
@@ -300,30 +343,40 @@ class MAGEMin:
                 f"buffer {buffer!r} is not available for database {self._database!r}"
             )
 
-        if suppress_phases:
-            encoded = [name.encode() for name in suppress_phases]
-            suppress_array = (ctypes.c_char_p * len(encoded))(*encoded)
-            n_suppress = len(encoded)
-        else:
-            suppress_array = None
-            n_suppress = 0
+        # Like the buffer, the suppressed set persists on the C handle, so it is
+        # re-applied (or cleared) on every call.
+        encoded = [name.encode() for name in suppress_phases or ()]
+        suppress_array = (ctypes.c_char_p * len(encoded))(*encoded) if encoded else None
+        if self._lib.MAGEMin_SetSuppressedPhases(self._handle, suppress_array, len(encoded)) != 0:
+            raise MAGEMinComputeError(
+                f"unknown phase in suppress_phases={list(suppress_phases or ())!r}; expected "
+                "names from solution_phase_names/pure_phase_names"
+            )
+
+        # Also persists on the C handle, so it is re-applied (or cleared) on every call.
+        self._lib.MAGEMin_SetStoreKKT(self._handle, int(store_kkt))
 
         bulk_array = (ctypes.c_double * self._n_oxides)(*values)
-        result_ptr = self._lib.MAGEMin_ComputeEquilibriumEx(
+        result_ptr = self._lib.MAGEMin_ComputeEquilibrium(
             self._handle,
             float(P),
             float(T),
             bulk_array,
             sys_in.encode(),
-            suppress_array,
-            n_suppress,
         )
         if not result_ptr:
-            raise MAGEMinComputeError(
-                f"MAGEMin_ComputeEquilibriumEx failed for P={P}, T={T} "
-                "(check suppress_phases against solution_phase_names/pure_phase_names)"
-            )
-        return EquilibriumResult._from_c(result_ptr.contents, light=light, name_solvus=name_solvus)
+            raise MAGEMinComputeError(f"MAGEMin_ComputeEquilibrium failed for P={P}, T={T}")
+        final_newton_system = None
+        if store_kkt:
+            kkt_ptr = self._lib.MAGEMin_GetFinalNewtonSystem(self._handle)
+            if kkt_ptr:
+                final_newton_system = FinalNewtonSystem._from_c(kkt_ptr.contents, self._n_oxides)
+        return EquilibriumResult._from_c(
+            result_ptr.contents,
+            light=light,
+            name_solvus=name_solvus,
+            final_newton_system=final_newton_system,
+        )
 
     def close(self) -> None:
         """Free the underlying MAGEMin handle. Safe to call more than once."""
@@ -363,6 +416,7 @@ class Point(NamedTuple):
             `suppress_phases`.
         light: Passed through to `MAGEMin.compute`'s `light`.
         name_solvus: Passed through to `MAGEMin.compute`'s `name_solvus`.
+        store_kkt: Passed through to `MAGEMin.compute`'s `store_kkt`.
     """
 
     P: float
@@ -374,6 +428,7 @@ class Point(NamedTuple):
     suppress_phases: Sequence[str] | None = None
     light: bool = False
     name_solvus: bool = True
+    store_kkt: bool = False
 
 
 def multi_point_minimization(
@@ -382,6 +437,8 @@ def multi_point_minimization(
     *,
     verbose: bool = False,
     solver: int = 2,
+    optimizer: int = 0,
+    final_newton_step: bool = True,
     max_workers: int | None = None,
 ) -> list[EquilibriumResult]:
     """Compute equilibrium at many (P, T, bulk) points in parallel.
@@ -397,6 +454,10 @@ def multi_point_minimization(
         verbose: Passed through to each worker's `MAGEMin` instance.
         solver: Passed through to each worker's `MAGEMin` instance; see
             `MAGEMin.__init__`.
+        optimizer: Passed through to each worker's `MAGEMin` instance; see
+            `MAGEMin.__init__`.
+        final_newton_step: Passed through to each worker's `MAGEMin`
+            instance; see `MAGEMin.__init__`.
         max_workers: Number of worker threads; defaults to
             `min(len(points), os.cpu_count())`.
 
@@ -411,7 +472,13 @@ def multi_point_minimization(
     chunks = [indexed[i::n_workers] for i in range(n_workers)]
 
     def _run_chunk(chunk: list[tuple[int, Point]]) -> list[tuple[int, EquilibriumResult]]:
-        with MAGEMin(database, verbose=verbose, solver=solver) as mg:
+        with MAGEMin(
+            database,
+            verbose=verbose,
+            solver=solver,
+            optimizer=optimizer,
+            final_newton_step=final_newton_step,
+        ) as mg:
             return [
                 (
                     idx,
@@ -425,6 +492,7 @@ def multi_point_minimization(
                         suppress_phases=point.suppress_phases,
                         light=point.light,
                         name_solvus=point.name_solvus,
+                        store_kkt=point.store_kkt,
                     ),
                 )
                 for idx, point in chunk

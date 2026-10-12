@@ -4,15 +4,18 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Reused by release.yml, so a release is only published after the full suite passes.
+  workflow_call:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
-
-      - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y liblapacke-dev libnlopt-dev
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -23,10 +26,12 @@ jobs:
       - name: Install Python dependencies
         run: uv sync --group dev
 
-      - name: Download and build MAGEMin library
-        # The vendored MAGEMin/ source tree is local-only (not pushed to GitHub), so CI
-        # downloads+builds a release via magemin-install instead of ./scripts/build_lib.sh.
+      - name: Install MAGEMin library
+        # Prebuilt MAGEMin_jll binaries of the newest release: no compiler or system packages.
+        # GITHUB_TOKEN lifts the GitHub API's unauthenticated rate limit.
         run: uv run magemin-install
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Lint
         run: |
@@ -37,7 +42,7 @@ jobs:
         run: uv run pytest -q --deselect tests/test_download_live.py
 
   sanitizers:
-    # libMAGEMin + magemin_ext built with ASan/UBSan, with every allocation filled with
+    # libMAGEMin built from source with ASan/UBSan, with every allocation filled with
     # junk (malloc_fill_byte) so reads of uninitialized heap memory fail deterministically
     # instead of by luck.
     runs-on: ubuntu-latest
@@ -57,7 +62,7 @@ jobs:
         run: uv sync --group dev
 
       - name: Download MAGEMin source
-        # The latest published release, i.e. the same one `magemin-install` builds.
+        # The latest published release, matching the prebuilt binaries the test job uses.
         run: |
           ref="$(uv run python -c 'from magemin._download import resolve_ref; print(resolve_ref(None))')"
           mkdir -p "$RUNNER_TEMP/magemin"

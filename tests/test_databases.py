@@ -54,7 +54,9 @@ def test_all_database_survives_uninitialized_heap(require_library: None) -> None
     """
     proc = subprocess.run(
         [sys.executable, "-c", _DEW_CHILD],
-        env={**os.environ, "MALLOC_PERTURB_": "190"},
+        # OpenBLAS spawns one thread per core on load; on many-core machines their stacks
+        # alone exceed the address-space cap, so pin it to one thread.
+        env={**os.environ, "MALLOC_PERTURB_": "190", "OPENBLAS_NUM_THREADS": "1"},
         preexec_fn=_limit_address_space,
         capture_output=True,
         timeout=300,

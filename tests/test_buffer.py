@@ -1,4 +1,4 @@
-"""Tests for oxygen-buffer/fixed-activity constraints (magemin_ext's MAGEMin_SetBuffer)."""
+"""Tests for oxygen-buffer/fixed-activity constraints (MAGEMin_api.h's MAGEMin_SetBuffer)."""
 
 import pytest
 
@@ -57,3 +57,11 @@ def test_activity_buffer_out_of_range_raises(ig: MAGEMin) -> None:
     """An activity value outside (0, 1) is rejected before reaching the C library."""
     with pytest.raises(MAGEMinComputeError):
         ig.compute(P=8, T=800, bulk=bulk_rocks.KLB1_IG, buffer="aH2O", buffer_value=1.5)
+
+
+def test_c_api_rejects_pure_phase_that_is_not_a_buffer(ig: MAGEMin) -> None:
+    """MAGEMin_SetBuffer refuses an ordinary pure phase, which MAGEMin would silently ignore."""
+    assert "q" in ig.pure_phase_names
+    assert ig._lib.MAGEMin_SetBuffer(ig._handle, b"q", 0.0) == -1
+    assert ig._lib.MAGEMin_SetBuffer(ig._handle, b"qfm", 0.0) == 0
+    assert ig._lib.MAGEMin_SetBuffer(ig._handle, b"none", 0.0) == 0

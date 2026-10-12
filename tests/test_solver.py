@@ -1,9 +1,9 @@
-"""Tests for MAGEMin(..., solver=...) (magemin_ext's MAGEMin_InitEx solver override).
+"""Tests for MAGEMin(..., solver=...) (MAGEMin_api.h's MAGEMin_SetSolver).
 
 Added while looking into a user report that suppressing "ilm" doesn't let "ilmm"
 (the mp database's other ilmenite-group model) take its place. That turned out to
 be a separate bug, unrelated to solver choice -- see tests/test_suppress_phases.py
-and magemin_ext.c's MAGEMin_ComputeEquilibriumEx for the actual fix (gv.mbCpx/
+and MAGEMin_api.c's MAGEMin_ComputeEquilibrium for the actual fix (gv.mbCpx/
 mbIlm/mpSp/mpIlm gate whether a near-degenerate pair's pseudocompounds are even
 generated, independent of ss_flags). The solvers agree across a full mp P-T grid,
 so the test below only checks that both run and converge to the same equilibrium.
@@ -29,6 +29,16 @@ def test_default_solver_is_two(ig: MAGEMin) -> None:
 def test_solver_property_reflects_requested_value(require_library: None) -> None:
     with MAGEMin("ig", solver=0) as mg:
         assert mg.solver == 0
+
+
+def test_c_api_set_solver_return_codes(require_library: None) -> None:
+    """MAGEMin_SetSolver: 0 applied, 1 ignored (legacy-only "sb"), -1 invalid."""
+    with MAGEMin("ig") as mg:
+        assert mg._lib.MAGEMin_SetSolver(mg._handle, 0) == 0
+        assert mg._lib.MAGEMin_SetSolver(mg._handle, 4) == -1
+    with MAGEMin("sb11") as mg:
+        assert mg._lib.MAGEMin_SetSolver(mg._handle, 2) == 1
+        assert mg._lib.MAGEMin_SetSolver(mg._handle, 0) == 0
 
 
 def test_sb_database_accepts_any_solver_request(require_library: None) -> None:
