@@ -1,6 +1,6 @@
 [project]
 name = "magemin"
-version = "0.1.0"
+version = "0.1.1"
 description = "Python interface to MAGEMin, a C package that performs Gibbs energy minimization for thermodynamic equilibrium calculations."
 readme = "README.md"
 license = "GPL-3.0-or-later"

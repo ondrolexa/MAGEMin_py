@@ -113,3 +113,15 @@ def test_predefined_bulk_rocks_smoke(require_library: None) -> None:
             with MAGEMin(rock.database) as mg:
                 result = mg.compute(P=10, T=800, bulk=rock)
                 assert result.status == 0
+
+
+def test_infeasible_oxygen_reports_failed_status(ig: MAGEMin) -> None:
+    """Unbuffered O beyond what FeO can take up as Fe2O3 cannot be mass-balanced: status -1."""
+    bulk = list(bulk_rocks.KLB1_IG.values)
+    bulk[ig.oxide_names.index("O")] = 2.5
+    assert ig.compute(P=8, T=800, bulk=bulk, sys_in="mol").status == 0
+
+    bulk[ig.oxide_names.index("O")] = 3.5
+    result = ig.compute(P=8, T=800, bulk=bulk, sys_in="mol")
+    assert result.status == -1
+    assert result.bulk_res_norm > 1e-3

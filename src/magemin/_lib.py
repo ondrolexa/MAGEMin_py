@@ -282,9 +282,14 @@ def _cache_candidate_paths() -> list[Path]:
     ]
 
 
-# The phase-suppression/solver/buffer/phase-name/final-Newton part of MAGEMin_api.h, absent from
-# older libMAGEMin builds -- checked on load so an old library fails clearly instead of mid-call.
+# The phase-suppression/solver/buffer/phase-name/final-Newton/mu-fix/seismic part of
+# MAGEMin_api.h, absent from older libMAGEMin builds -- checked on load so an old library fails
+# clearly instead of mid-call.
 _REQUIRED_API = (
+    "MAGEMin_InitMuFix",
+    "MAGEMin_NMuFix",
+    "MAGEMin_SetMuFix",
+    "MAGEMin_SetSeismicScheme",
     "MAGEMin_SetSolver",
     "MAGEMin_SetSSSolver",
     "MAGEMin_SetFinalNewtonStep",
@@ -311,6 +316,19 @@ def _load(path: str | Path) -> ctypes.CDLL:
     handle_p = ctypes.POINTER(MAGEMin_Handle)
     lib.MAGEMin_Init.argtypes = [ctypes.c_char_p, ctypes.c_int]
     lib.MAGEMin_Init.restype = handle_p
+    lib.MAGEMin_InitMuFix.argtypes = [
+        ctypes.c_char_p,
+        ctypes.c_int,
+        ctypes.POINTER(ctypes.c_char_p),
+        ctypes.c_int,
+    ]
+    lib.MAGEMin_InitMuFix.restype = handle_p
+    lib.MAGEMin_NMuFix.argtypes = [handle_p]
+    lib.MAGEMin_NMuFix.restype = ctypes.c_int
+    lib.MAGEMin_SetMuFix.argtypes = [handle_p, ctypes.POINTER(ctypes.c_double), ctypes.c_int]
+    lib.MAGEMin_SetMuFix.restype = ctypes.c_int
+    lib.MAGEMin_SetSeismicScheme.argtypes = [handle_p, ctypes.c_int, ctypes.c_double]
+    lib.MAGEMin_SetSeismicScheme.restype = ctypes.c_int
     lib.MAGEMin_NOxides.argtypes = [handle_p]
     lib.MAGEMin_NOxides.restype = ctypes.c_int
     lib.MAGEMin_OxideNames.argtypes = [handle_p]

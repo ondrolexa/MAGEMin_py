@@ -250,7 +250,9 @@ class _ResolvedCell:
             `validate_diagram`'s `build_adjacency` uses for exact-integer
             adjacency instead of float comparison.
         depth: Refinement depth this cell was finalized at.
-        resolved: Whether all 4 corners share one stable-phase assemblage.
+        resolved: Whether all 4 corners share one stable-phase assemblage. A
+            corner whose computation failed (non-zero `status` or no stable
+            phases) never matches, so a cell touching one never resolves.
         assemblage: Sorted shared phase-name tuple when `resolved`; `None`
             otherwise.
     """
@@ -262,6 +264,16 @@ class _ResolvedCell:
     depth: int
     resolved: bool
     assemblage: tuple[str, ...] | None
+
+
+def _assemblage(result: EquilibriumResult) -> tuple[str, ...] | None:
+    """Return a point's sorted stable-phase tuple, or `None` if its computation failed.
+
+    A point failed if MAGEMin did not converge (`status != 0`, e.g. `-1` for a mass-balance
+    failure on an infeasible bulk) or reported no stable phases -- its `ph` is then meaningless
+    (it can even repeat phase names) and must never be compared as a real assemblage.
+    """
+    return tuple(sorted(result.ph)) if result.status == 0 and result.ph else None
 
 
 def refine(
@@ -331,15 +343,17 @@ def refine(
         next_frontier: list[_LatticeCell] = []
         for cell in frontier:
             lattice_corners = cell.corners()
-            assemblages = [tuple(sorted(cache[corner].ph)) for corner in lattice_corners]
+            assemblages = [_assemblage(cache[corner]) for corner in lattice_corners]
             physical_corners = tuple(mapping.physical(i / n, j / n) for i, j in lattice_corners)
-            if len(set(assemblages)) == 1:
+            if len(set(assemblages)) == 1 and assemblages[0] is not None:
                 leaves.append(
                     _ResolvedCell(
                         physical_corners, lattice_corners, cell.depth, True, assemblages[0]
                     )
                 )
-            elif cell.depth >= max_depth:
+            # A cell whose corners all failed has no boundary to bracket -- subdividing it would
+            # only compute more points in a region MAGEMin cannot handle.
+            elif cell.depth >= max_depth or all(a is None for a in assemblages):
                 leaves.append(
                     _ResolvedCell(physical_corners, lattice_corners, cell.depth, False, None)
                 )

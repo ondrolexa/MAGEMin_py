@@ -44,6 +44,10 @@ _VALID_BUFFERS = _REDOX_BUFFERS | _ACTIVITY_BUFFERS
 
 _VALID_SOLVERS = frozenset({0, 1, 2, 3})
 _VALID_OPTIMIZERS = frozenset({0, 1, 2})
+_SEISMIC_SCHEMES = {"VRH": 0, "HS": 1}
+# MAGEMin's mu_fix_idx/mu_fix_val arrays hold maxlen_ox = 16 entries; MAGEMin_InitMuFix writes
+# past them for more names before validating anything, so the count is capped here first.
+_MAX_MU_FIX = 16
 
 
 class MAGEMin:
@@ -67,6 +71,9 @@ class MAGEMin:
         solver: int = 2,
         optimizer: int = 0,
         final_newton_step: bool = True,
+        mu_fix: Sequence[str] = (),
+        seismic_scheme: Literal["VRH", "HS"] = "VRH",
+        seismic_weight: float = 0.5,
     ) -> None:
         """Initialize a MAGEMin database handle.
 
@@ -110,12 +117,32 @@ class MAGEMin:
                 solves its equilibrium conditions to machine precision so that
                 chemical potentials, phase fractions and compositions are
                 mutually consistent; the solver result is kept whenever the
-                step does not converge. Set once here, like `solver`.
+                step does not converge. Set once here, like `solver`. It is
+                skipped while any chemical potential is fixed (`mu_fix`).
+            mu_fix: Oxide names (from this database's `oxide_names`, e.g.
+                `("MgO", "K2O")`) whose chemical potential is fixed directly
+                instead of solved for from the bulk composition. The target
+                values are passed to every `compute()` call as
+                `mu_fix_values`. Each fixed oxide adds a fictive pure phase
+                `"m<oxide>"` (e.g. `"mMgO"`) at the end of `pure_phase_names`,
+                which appears in a result's `ph` while its target holds. Fixed
+                for this instance's whole lifetime. Empty (the default) fixes
+                nothing.
+            seismic_scheme: How the phases' elastic moduli are averaged into
+                the system's seismic properties (`vp`, `vs`, `bulk_mod`,
+                `shear_mod`, ...): `"VRH"` (Voigt-Reuss-Hill, the default) or
+                `"HS"` (Hashin-Shtrikman). Set once here, like `solver`.
+            seismic_weight: Position between the soft and the stiff bound of
+                `seismic_scheme`, in `[0, 1]`: for `"VRH"`, `0` = Reuss,
+                `0.5` = classic VRH (the default), `1` = Voigt; for `"HS"`,
+                `0` = HS-, `0.5` = HS average, `1` = HS+.
 
         Raises:
             MAGEMinLibraryNotFoundError: If libMAGEMin cannot be located.
             MAGEMinInitError: If `database` is unrecognized, `solver` is not
-                `0`/`1`/`2`/`3`, `optimizer` is not `0`/`1`/`2`, or the
+                `0`/`1`/`2`/`3`, `optimizer` is not `0`/`1`/`2`, `mu_fix` names
+                an oxide twice, more than 16 oxides, or an oxide this database
+                lacks, `seismic_scheme`/`seismic_weight` is invalid, or the
                 underlying init call fails.
         """
         self._closed = True  # set before anything that can raise, for __del__ safety
@@ -131,10 +158,36 @@ class MAGEMin:
             raise MAGEMinInitError(
                 f"optimizer must be one of {sorted(_VALID_OPTIMIZERS)}, got {optimizer!r}"
             )
+        mu_fix = tuple(mu_fix)
+        if not all(isinstance(name, str) for name in mu_fix):
+            raise MAGEMinInitError(f"mu_fix must contain oxide names, got {mu_fix!r}")
+        if len(set(mu_fix)) != len(mu_fix):
+            raise MAGEMinInitError(f"mu_fix names an oxide more than once: {mu_fix!r}")
+        if len(mu_fix) > _MAX_MU_FIX:
+            raise MAGEMinInitError(
+                f"mu_fix can fix at most {_MAX_MU_FIX} oxides, got {len(mu_fix)}"
+            )
+        if seismic_scheme not in _SEISMIC_SCHEMES:
+            raise MAGEMinInitError(
+                f"seismic_scheme must be one of {sorted(_SEISMIC_SCHEMES)}, got {seismic_scheme!r}"
+            )
+        if not 0.0 <= seismic_weight <= 1.0:
+            raise MAGEMinInitError(f"seismic_weight must be in [0, 1], got {seismic_weight!r}")
         self._lib = _lib.get_library()
-        handle = self._lib.MAGEMin_Init(database.encode(), 1 if verbose else 0)
-        if not handle:
-            raise MAGEMinInitError(f"MAGEMin_Init failed for database {database!r}")
+        if mu_fix:
+            names = (ctypes.c_char_p * len(mu_fix))(*(name.encode() for name in mu_fix))
+            handle = self._lib.MAGEMin_InitMuFix(
+                database.encode(), 1 if verbose else 0, names, len(mu_fix)
+            )
+            if not handle:
+                raise MAGEMinInitError(
+                    f"MAGEMin_InitMuFix failed for database {database!r} with "
+                    f"mu_fix={mu_fix!r}; every name must be one of the database's oxide_names"
+                )
+        else:
+            handle = self._lib.MAGEMin_Init(database.encode(), 1 if verbose else 0)
+            if not handle:
+                raise MAGEMinInitError(f"MAGEMin_Init failed for database {database!r}")
         self._handle = handle
         self._closed = False
         # 1 = ignored: "sb" databases only support the legacy solver (0).
@@ -150,10 +203,20 @@ class MAGEMin:
             raise MAGEMinInitError(
                 f"MAGEMin_SetFinalNewtonStep rejected final_newton_step={final_newton_step!r}"
             )
+        scheme = _SEISMIC_SCHEMES[seismic_scheme]
+        if self._lib.MAGEMin_SetSeismicScheme(self._handle, scheme, float(seismic_weight)) < 0:
+            self.close()
+            raise MAGEMinInitError(
+                f"MAGEMin_SetSeismicScheme rejected seismic_scheme={seismic_scheme!r}, "
+                f"seismic_weight={seismic_weight!r}"
+            )
         self._database = database
         self._solver = solver
         self._optimizer = optimizer
         self._final_newton_step = bool(final_newton_step)
+        self._mu_fix = mu_fix
+        self._seismic_scheme = seismic_scheme
+        self._seismic_weight = float(seismic_weight)
         self._n_oxides = self._lib.MAGEMin_NOxides(self._handle)
         names_ptr = self._lib.MAGEMin_OxideNames(self._handle)
         self._oxide_names = tuple(names_ptr[i].decode() for i in range(self._n_oxides))
@@ -185,6 +248,21 @@ class MAGEMin:
         return self._final_newton_step
 
     @property
+    def mu_fix(self) -> tuple[str, ...]:
+        """Oxides whose chemical potential is fixed (see `__init__`); empty if none."""
+        return self._mu_fix
+
+    @property
+    def seismic_scheme(self) -> str:
+        """The seismic averaging scheme, `"VRH"` or `"HS"` (see `__init__`)."""
+        return self._seismic_scheme
+
+    @property
+    def seismic_weight(self) -> float:
+        """The soft-to-stiff bound weight of `seismic_scheme` (see `__init__`)."""
+        return self._seismic_weight
+
+    @property
     def n_oxides(self) -> int:
         """Number of oxide/system components expected in a bulk composition."""
         return self._n_oxides
@@ -201,7 +279,11 @@ class MAGEMin:
 
     @property
     def pure_phase_names(self) -> tuple[str, ...]:
-        """Pure-phase names, valid for `compute`'s `suppress_phases`."""
+        """Pure-phase names, valid for `compute`'s `suppress_phases`.
+
+        With `mu_fix`, ends with one fictive `"m<oxide>"` phase per fixed oxide; those cannot
+        be suppressed.
+        """
         return self._pure_phase_names
 
     def compute(
@@ -218,6 +300,7 @@ class MAGEMin:
         light: bool = False,
         name_solvus: bool = True,
         store_kkt: bool = False,
+        mu_fix_values: Sequence[float] | None = None,
     ) -> EquilibriumResult:
         """Compute the stable equilibrium phase assemblage at one (P, T) point.
 
@@ -274,6 +357,15 @@ class MAGEMin:
                 converged state as the result's `final_newton_system` (a
                 `FinalNewtonSystem`) -- left `None` if the final Newton polish
                 was not accepted or is disabled (`final_newton_step=False`).
+            mu_fix_values: Target chemical potentials of the oxides fixed by
+                this instance's `mu_fix`, in the same order and units as the
+                result's `gamma`. Required when `mu_fix` is set, and must be
+                left `None` otherwise. Re-applied on every call, like
+                `buffer`. Each fixed oxide's bulk content must be set
+                generously in excess of what its target implies: when the
+                target holds, its fictive `"m<oxide>"` phase appears in the
+                result's `ph`; otherwise the oxide's chemical potential misses
+                the target and a `UserWarning` is issued.
 
         Returns:
             The computed equilibrium result.
@@ -283,8 +375,9 @@ class MAGEMin:
             BulkCompositionError: If `bulk`'s length or oxide set doesn't
                 match this database's oxides.
             MAGEMinComputeError: If `sys_in`/`buffer`/`buffer_value` is
-                invalid, or the underlying computation fails (including an
-                unrecognized `suppress_phases` name).
+                invalid, `mu_fix_values` doesn't match `mu_fix`, or the
+                underlying computation fails (including an unrecognized
+                `suppress_phases` name).
             ValueError: If both `suppress_phases` and `use_phases` are given.
         """
         if self._closed:
@@ -363,6 +456,21 @@ class MAGEMin:
         # Also persists on the C handle, so it is re-applied (or cleared) on every call.
         self._lib.MAGEMin_SetStoreKKT(self._handle, int(store_kkt))
 
+        if self._mu_fix:
+            if mu_fix_values is None or len(mu_fix_values) != len(self._mu_fix):
+                raise MAGEMinComputeError(
+                    f"mu_fix_values must give {len(self._mu_fix)} value(s), one per mu_fix "
+                    f"oxide {self._mu_fix}, got {mu_fix_values!r}"
+                )
+            # Persists on the C handle like the buffer, so it is re-applied on every call.
+            targets = (ctypes.c_double * len(self._mu_fix))(*map(float, mu_fix_values))
+            if self._lib.MAGEMin_SetMuFix(self._handle, targets, len(self._mu_fix)) != 0:
+                raise MAGEMinComputeError(f"MAGEMin_SetMuFix rejected {mu_fix_values!r}")
+        elif mu_fix_values is not None:
+            raise MAGEMinComputeError(
+                "mu_fix_values given, but this MAGEMin instance was created without mu_fix"
+            )
+
         bulk_array = (ctypes.c_double * self._n_oxides)(*values)
         result_ptr = self._lib.MAGEMin_ComputeEquilibrium(
             self._handle,
@@ -378,11 +486,13 @@ class MAGEMin:
             kkt_ptr = self._lib.MAGEMin_GetFinalNewtonSystem(self._handle)
             if kkt_ptr:
                 final_newton_system = FinalNewtonSystem._from_c(kkt_ptr.contents, self._n_oxides)
+        mu_fix_phases = tuple(f"m{oxide}" for oxide in self._mu_fix)
         result = EquilibriumResult._from_c(
             result_ptr.contents,
             light=light,
             name_solvus=name_solvus,
             final_newton_system=final_newton_system,
+            mu_fix_phases=mu_fix_phases,
         )
         # A buffer only constrains the system while its pure phase is part of the stable
         # assemblage, which needs an excess of the buffered component in the bulk. "O2" is
@@ -395,6 +505,16 @@ class MAGEMin:
                 UserWarning,
                 stacklevel=2,
             )
+        # Same mechanism for a fixed chemical potential: its fictive phase must be stable.
+        for oxide, phase in zip(self._mu_fix, mu_fix_phases, strict=True):
+            if phase not in result.ph:
+                warnings.warn(
+                    f"fixed chemical potential of {oxide} was not reached at P={P}, T={T} "
+                    f"({phase!r} is not part of the stable assemblage); increase {oxide} in "
+                    "the bulk composition, or the target is beyond what any phase supports",
+                    UserWarning,
+                    stacklevel=2,
+                )
         return result
 
     def close(self) -> None:
@@ -436,6 +556,8 @@ class Point(NamedTuple):
         light: Passed through to `MAGEMin.compute`'s `light`.
         name_solvus: Passed through to `MAGEMin.compute`'s `name_solvus`.
         store_kkt: Passed through to `MAGEMin.compute`'s `store_kkt`.
+        mu_fix_values: Passed through to `MAGEMin.compute`'s `mu_fix_values`;
+            required when `multi_point_minimization` is given `mu_fix`.
     """
 
     P: float
@@ -448,6 +570,7 @@ class Point(NamedTuple):
     light: bool = False
     name_solvus: bool = True
     store_kkt: bool = False
+    mu_fix_values: Sequence[float] | None = None
 
 
 def multi_point_minimization(
@@ -458,6 +581,9 @@ def multi_point_minimization(
     solver: int = 2,
     optimizer: int = 0,
     final_newton_step: bool = True,
+    mu_fix: Sequence[str] = (),
+    seismic_scheme: Literal["VRH", "HS"] = "VRH",
+    seismic_weight: float = 0.5,
     max_workers: int | None = None,
 ) -> list[EquilibriumResult]:
     """Compute equilibrium at many (P, T, bulk) points in parallel.
@@ -477,6 +603,12 @@ def multi_point_minimization(
             `MAGEMin.__init__`.
         final_newton_step: Passed through to each worker's `MAGEMin`
             instance; see `MAGEMin.__init__`.
+        mu_fix: Passed through to each worker's `MAGEMin` instance; see
+            `MAGEMin.__init__`. Each point then needs `mu_fix_values`.
+        seismic_scheme: Passed through to each worker's `MAGEMin` instance;
+            see `MAGEMin.__init__`.
+        seismic_weight: Passed through to each worker's `MAGEMin` instance;
+            see `MAGEMin.__init__`.
         max_workers: Number of worker threads; defaults to
             `min(len(points), os.cpu_count())`.
 
@@ -497,6 +629,9 @@ def multi_point_minimization(
             solver=solver,
             optimizer=optimizer,
             final_newton_step=final_newton_step,
+            mu_fix=mu_fix,
+            seismic_scheme=seismic_scheme,
+            seismic_weight=seismic_weight,
         ) as mg:
             return [
                 (
@@ -512,6 +647,7 @@ def multi_point_minimization(
                         light=point.light,
                         name_solvus=point.name_solvus,
                         store_kkt=point.store_kkt,
+                        mu_fix_values=point.mu_fix_values,
                     ),
                 )
                 for idx, point in chunk

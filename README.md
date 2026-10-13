@@ -9,7 +9,8 @@ mineral assemblage for a given bulk-rock composition and pressure/temperature co
 `magemin` wraps `MAGEMin`'s own official C API (`MAGEMin_api.h`) via
 [`ctypes`](https://docs.python.org/3/library/ctypes.html) -- a small, stable surface intended by
 upstream for external C/C++ callers: init/compute/free, oxide and phase names, solver choice,
-oxygen buffer / fixed activity, and phase suppression. This package contains no C code of its
+oxygen buffer / fixed activity, fixed chemical potentials, phase suppression, and the seismic
+averaging scheme. This package contains no C code of its
 own; it loads the official prebuilt MAGEMin library (see [Installation](#installation)). See
 [Scope and limitations](#scope-and-limitations) for what's still out of scope.
 
@@ -174,7 +175,7 @@ uv run mkdocs build   # static site in site/
 ## Scope and limitations
 
 This package wraps MAGEMin's C API (`MAGEMin_api.h`), which covers buffer/activity fixing,
-phase suppression and the `sb` databases. It does **not** support:
+fixed chemical potentials, phase suppression, the seismic averaging scheme and the `sb` databases. It does **not** support:
 
 - Predefined bulk-rock compositions beyond the small hand-curated set in `bulk_rocks` (no lookup of
   MAGEMin's full internal `--test` composition tables)

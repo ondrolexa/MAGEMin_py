@@ -52,7 +52,7 @@ def _make_mapping(axis1_range=(0.0, 1.0), axis2_range=(0.0, 1.0)):
 
 def _boundary_batch_fn(database, points, *, max_workers=None, verbose=False, solver=2):
     """Fake multi_point_minimization: phase boundary at P == 0.5."""
-    return [SimpleNamespace(ph=("B",) if point.P >= 0.5 else ("A",)) for point in points]
+    return [SimpleNamespace(ph=("B",) if point.P >= 0.5 else ("A",), status=0) for point in points]
 
 
 def test_refine_resolves_uniform_region_without_splitting() -> None:
@@ -107,7 +107,7 @@ def test_refine_terminal_case_never_resolves_stops_at_max_depth() -> None:
     def never_agrees_batch_fn(database, points, *, max_workers=None, verbose=False, solver=2):
         # Every lattice point gets a unique assemblage, so no cell's 4
         # corners can ever agree -- forces recursion to run to max_depth.
-        return [SimpleNamespace(ph=(f"{point.P:.6f}-{point.T:.6f}",)) for point in points]
+        return [SimpleNamespace(ph=(f"{point.P:.6f}-{point.T:.6f}",), status=0) for point in points]
 
     mapping = _make_mapping()
     max_depth = 2
@@ -185,7 +185,7 @@ def test_refine_seeded_cache_skips_already_known_points() -> None:
 
 def test_refine_seeded_cache_is_not_mutated_by_the_caller() -> None:
     mapping = _make_mapping()
-    seed = {(0, 0): SimpleNamespace(ph=("A",))}
+    seed = {(0, 0): SimpleNamespace(ph=("A",), status=0)}
     original_keys = set(seed.keys())
 
     _diagrams.refine(
@@ -257,3 +257,50 @@ def test_resolve_bulk_for_interpolation_rejects_mismatched_bulkrocks() -> None:
 
     with pytest.raises(BulkCompositionError):
         _resolve_bulk_for_interpolation(KLB1_IG, FPWM_PELITE_MP, None)
+
+
+def _failed_region_batch_fn(database, points, *, max_workers=None, verbose=False, solver=2):
+    """Fake multi_point_minimization: every point with P >= 0.5 fails (status -1)."""
+    return [
+        SimpleNamespace(ph=("A", "A"), status=-1)
+        if point.P >= 0.5
+        else SimpleNamespace(ph=("A",), status=0)
+        for point in points
+    ]
+
+
+def test_refine_failed_corner_never_resolves_into_a_field() -> None:
+    """A failed point's (meaningless) `ph` must not form a resolved field of its own."""
+    leaves, _ = _diagrams.refine(
+        "ig",
+        _make_mapping(),
+        initial_resolution=1,
+        max_depth=3,
+        max_workers=None,
+        verbose=False,
+        solver=2,
+        batch_fn=_failed_region_batch_fn,
+    )
+
+    assert {leaf.assemblage for leaf in leaves if leaf.resolved} == {("A",)}
+    for leaf in leaves:
+        if leaf.resolved:
+            assert all(p < 0.5 for p, _ in leaf.corners)
+
+
+def test_refine_all_failed_cell_is_not_subdivided() -> None:
+    """A cell whose 4 corners all failed becomes an unresolved leaf at its current depth."""
+    leaves, cache = _diagrams.refine(
+        "ig",
+        _make_mapping(axis1_range=(0.5, 1.0)),
+        initial_resolution=1,
+        max_depth=4,
+        max_workers=None,
+        verbose=False,
+        solver=2,
+        batch_fn=lambda database, points, **kw: [SimpleNamespace(ph=(), status=-1) for _ in points],
+    )
+
+    assert len(leaves) == 4
+    assert all(not leaf.resolved and leaf.depth == 1 for leaf in leaves)
+    assert len(cache) == 9

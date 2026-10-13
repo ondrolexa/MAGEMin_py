@@ -1,7 +1,7 @@
 """Adaptive Delaunay-mesh PT, PX, and TX stable-phase-assemblage pseudosections.
 
 Built on top of `magemin.multi_point_minimization`, using a perturbed-hex-lattice Delaunay mesh
-(ported from the sibling `pseudo_graph` project) instead of `magemin.diagrams.PhaseDiagram`'s
+instead of `magemin.diagrams.PhaseDiagram`'s
 quadtree grid: points are densified wherever two Delaunay-triangle-adjacent points disagree in a
 way that isn't a legitimate single-phase or polymorph-swap boundary. See `magemin._mesh` for the
 refinement engine. Requires the optional `mesh` extra (`pip install magemin[mesh]`) to actually
@@ -630,10 +630,9 @@ class Pseudosection:
 
         Each field is drawn as a scatter of its own points: colors cycle through `cmap`'s first
         10 entries, then marker shape cycles through a 14-shape list every 10 fields, so any two
-        same-colored fields always differ in shape too (ported from `pseudo_graph`'s
-        `plot_field_points`). No region fill, no unresolved-cell shading, no colorbar -- points
-        with no assemblage (a failed computation) are omitted entirely. Requires the optional
-        `matplotlib` dependency (`pip install magemin[plot]`).
+        same-colored fields always differ in shape too. No region fill, no unresolved-cell
+        shading, no colorbar -- points with no assemblage (a failed computation) are omitted
+        entirely. Requires the optional `matplotlib` dependency (`pip install magemin[plot]`).
 
         Args:
             figsize: Figure size in inches; `None` (default) uses `(8.0, 6.0)`.

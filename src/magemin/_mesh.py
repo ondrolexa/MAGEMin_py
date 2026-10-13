@@ -1,6 +1,6 @@
 """Adaptive Delaunay-mesh refinement engine backing `magemin.pseudosection`.
 
-Ported from the sibling `pseudo_graph` project's `mesh.py`: a perturbed hexagonal lattice over
+A perturbed hexagonal lattice over
 normalized `[0,1]^2` is triangulated with `scipy.spatial.Delaunay`, then repeatedly densified
 wherever two triangle-adjacent points disagree in a way that isn't a legitimate boundary
 (`magemin._diagrams._is_clean_boundary` -- the same clean/polymorph-swap predicate
@@ -29,7 +29,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from magemin._diagrams import _is_clean_boundary
+from magemin._diagrams import _assemblage, _is_clean_boundary
 from magemin.errors import MAGEMinMeshError
 
 if TYPE_CHECKING:
@@ -240,9 +240,8 @@ def refine_mesh(
             database, batch_points, max_workers=max_workers, verbose=verbose, solver=solver
         )
         for idx, result in zip(indices, batch_results, strict=True):
-            ok = result.status == 0 and bool(result.ph)
-            results[idx] = result if ok else None
-            assemblages[idx] = tuple(sorted(result.ph)) if ok else None
+            assemblages[idx] = _assemblage(result)
+            results[idx] = result if assemblages[idx] is not None else None
 
     pending = [i for i, r in enumerate(results) if r is None]
     if pending:

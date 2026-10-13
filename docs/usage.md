@@ -80,6 +80,32 @@ See the [Results API reference](api/results.md) for every attribute on
     (`t == T_celsius + 273.15`); `EquilibriumResult.p` stays in kbar, matching the input. The
     `str(result)` summary already converts back to Celsius for display.
 
+## Convergence status and repeated phase names
+
+Check [`result.status`][magemin.results.EquilibriumResult] before trusting a result, especially in
+sweeps. `0` means converged; `1`-`4` mean the solver stopped at its iteration limit with an
+increasingly large residual; `-1` means it failed (mass balance not satisfied, or a non-negative
+chemical potential). A failed result's phases, fractions and compositions are meaningless -- it can
+even list the same phase name several times.
+
+The usual cause of `-1` is an infeasible bulk composition. For example, without a buffer the `O`
+entry can only be accommodated as Fe2O3, so `O` above roughly half the moles of `FeO` cannot be
+balanced:
+
+```python
+bulk = list(bulk_rocks.KLB1_IG.values)  # FeO = 5.886 mol
+bulk[mg.oxide_names.index("O")] = 3.5  # > 5.886 / 2
+result = mg.compute(P=8, T=800, bulk=bulk, sys_in="mol")
+print(result.status, result.bulk_res_norm)  # -1, ~0.16
+```
+
+In a converged result a repeated name is real: two coexisting compositions of the same solution
+model (immiscibility). Solvus naming (see below) renames most of these (`mu`/`pat`, `pl`/`afs`,
+...), but not all -- e.g. `mp`'s ordered and disordered ilmenite are both reported as `"ilm"`.
+[`PhaseDiagram`][magemin.diagrams.PhaseDiagram] and
+[`Pseudosection`][magemin.pseudosection.Pseudosection] treat points with a non-zero `status` as
+failed: they never form a field of their own.
+
 ## Oxygen buffers and fixed activities
 
 Pass `buffer` and `buffer_value` to `compute()` to fix an oxygen buffer or an oxide activity for that
@@ -111,6 +137,37 @@ unavailable-but-recognized name raises [`MAGEMinComputeError`][magemin.errors.MA
     H2O for `aH2O`). When it holds, the buffer appears in `result.ph` with a near-zero fraction
     (drop it before reporting the assemblage). When it doesn't, the result is simply the
     unbuffered equilibrium, and `compute()` issues a `UserWarning`.
+
+## Fixing chemical potentials
+
+`MAGEMin(database, mu_fix=[...])` fixes the chemical potential of the named oxides directly,
+instead of solving for it from the bulk composition. The set of fixed oxides belongs to the
+handle; the target values are passed to every `compute()` call as `mu_fix_values`, in the same
+order and the same units as [`result.gamma`][magemin.results.EquilibriumResult]:
+
+```python
+with MAGEMin("ig") as mg:
+    reference = mg.compute(P=10, T=1100, bulk=bulk_rocks.RE46_IG)
+    mu_mgo = reference.gamma[mg.oxide_names.index("MgO")]
+
+with MAGEMin("ig", mu_fix=["MgO"]) as mg:
+    bulk = list(bulk_rocks.RE46_IG.values)
+    bulk[mg.oxide_names.index("MgO")] = 60.0  # generous excess, see below
+    result = mg.compute(P=10, T=1100, bulk=bulk, sys_in="mol", mu_fix_values=[mu_mgo - 20.0])
+    print(result.gamma[mg.oxide_names.index("MgO")])  # mu_mgo - 20.0
+    print(result.ph)  # (..., 'mMgO')
+```
+
+Like a buffer, each fixed oxide works through an extra fictive pure phase, `"m<oxide>"` (listed at
+the end of `pure_phase_names`). It only holds while that phase is stable, so the bulk must contain
+a generous excess of the oxide. When the target holds, `"m<oxide>"` appears in `result.ph` with
+zero fraction; its reported composition is that oxide alone and its physical properties are NaN.
+When the target can't be reached (too little of the oxide, or a target beyond what any phase
+supports at that P-T), the phase is missing, the oxide's chemical potential misses the target, and
+`compute()` issues a `UserWarning`. The fictive phases cannot be suppressed, and the final Newton
+step is skipped while any chemical potential is fixed. Use
+[`multi_point_minimization`][magemin.core.multi_point_minimization]`(..., mu_fix=[...])` with
+`Point(..., mu_fix_values=[...])` for many points.
 
 ## Suppressing phases
 
@@ -215,6 +272,21 @@ Two more per-handle options, accepted wherever `solver` is:
 chemical potentials and phase amounts at the converged state -- as
 [`result.final_newton_system`][magemin.results.FinalNewtonSystem] (`None` if the polish was not
 accepted), e.g. for sensitivity analysis.
+
+### Seismic averaging scheme
+
+The system's seismic properties (`vp`, `vs`, `bulk_mod`, `shear_mod`, ...) average the phases'
+elastic moduli. `MAGEMin(database, seismic_scheme=..., seismic_weight=...)` selects how:
+`"VRH"` (Voigt-Reuss-Hill, the default) or `"HS"` (Hashin-Shtrikman), and where between the soft
+and the stiff bound of that scheme the result lies (`0` = Reuss / HS-, `0.5` = the classic average,
+the default, `1` = Voigt / HS+). Like `solver`, it is set once per handle and accepted by
+`multi_point_minimization`; the equilibrium itself is unaffected:
+
+```python
+with MAGEMin("ig", seismic_scheme="HS", seismic_weight=0.0) as mg:  # Hashin-Shtrikman lower bound
+    result = mg.compute(P=10, T=900, bulk=bulk_rocks.RE46_IG)
+    print(result.vp, result.vs)
+```
 
 ## Light mode for bulk sweeps
 
@@ -369,8 +441,8 @@ full example next to the diagram it validates.
 
 ## Delaunay-mesh pseudosections
 
-[`Pseudosection`][magemin.pseudosection.Pseudosection] is an alternative to `PhaseDiagram`, ported
-from the sibling `pseudo_graph` project: instead of a quadtree grid, points are sampled on a
+[`Pseudosection`][magemin.pseudosection.Pseudosection] is an alternative to `PhaseDiagram`:
+instead of a quadtree grid, points are sampled on a
 perturbed hexagonal lattice, Delaunay-triangulated, and densified wherever two triangle-adjacent
 points disagree in a way that isn't a legitimate boundary. Requires the optional `mesh` extra
 (`pip install magemin[mesh]`) to build or refine one -- `.validate()`/`.plot()`/`.show()` don't

@@ -58,7 +58,11 @@ class DiagramCell:
         depth: Refinement depth this cell was finalized at.
         resolved: True if all 4 corners share one stable-phase assemblage.
             False if the cell still straddles a boundary at `max_depth` (an
-            unresolved boundary leaf, not infinitely recursed).
+            unresolved boundary leaf, not infinitely recursed), or touches a
+            corner whose computation failed (non-zero `EquilibriumResult.status`
+            or no stable phases). A cell whose 4 corners all failed is left
+            unresolved immediately, without further subdivision; the failed
+            results themselves stay in `PhaseDiagram.points` for inspection.
         assemblage: Sorted shared phase-name tuple when `resolved`; `None`
             otherwise.
     """

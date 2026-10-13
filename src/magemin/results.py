@@ -9,6 +9,8 @@ objects before the handle can be reused or freed.
 from __future__ import annotations
 
 import ctypes
+import dataclasses
+import math
 from dataclasses import dataclass, field
 
 from magemin import _lib, _solvus
@@ -276,6 +278,10 @@ class MetastableSolutionPhase:
 class PurePhase:
     """A stable pure phase, mirroring C ``stb_PP_phase``.
 
+    For the fictive `"m<oxide>"` phase of a fixed chemical potential (`MAGEMin(mu_fix=...)`),
+    `comp`/`comp_wt`/`comp_apfu` are that oxide alone (1.0 at its index) and every other float
+    field is NaN -- MAGEMin reports no physical properties for it.
+
     Attributes:
         n_ox: Number of oxide components.
         f: Normalization factor of the phase's formula (MAGEMin's internal
@@ -465,6 +471,54 @@ class FinalNewtonSystem:
         )
 
 
+_PURE_PHASE_PROPERTIES = (
+    "f",
+    "g",
+    "delta_g",
+    "v",
+    "alpha",
+    "beta",
+    "cp",
+    "entropy",
+    "enthalpy",
+    "rho",
+    "bulk_mod",
+    "shear_mod",
+    "vp",
+    "vs",
+)
+
+
+def _clean_mu_fix_phases(
+    pure_phases: tuple[PurePhase, ...],
+    ph: tuple[str, ...],
+    ph_type: tuple[int, ...],
+    ph_id: tuple[int, ...],
+    oxides: tuple[str, ...],
+    mu_fix_phases: tuple[str, ...],
+) -> tuple[PurePhase, ...]:
+    """Replace the uninitialized fields of fictive `"m<oxide>"` mu-fix phases.
+
+    MAGEMin skips its pure-phase post-processing for these phases, so everything it reports for
+    them (composition, Gibbs energy, volume, elastic properties, ...) is uninitialized memory.
+    Each fictive phase is exactly one oxide component, so its composition is set to that oxide
+    alone; it has no physical properties, so every other float field is set to NaN.
+    """
+    cleaned = list(pure_phases)
+    for name, kind, idx in zip(ph, ph_type, ph_id, strict=True):
+        if kind != 0 or name not in mu_fix_phases:
+            continue
+        one_hot = tuple(1.0 if oxide == name[1:] else 0.0 for oxide in oxides)
+        cleaned[idx] = dataclasses.replace(
+            cleaned[idx],
+            comp=one_hot,
+            comp_wt=one_hot,
+            comp_apfu=one_hot,
+            **dict.fromkeys(_PURE_PHASE_PROPERTIES, math.nan),
+        )
+    return tuple(cleaned)
+
+
 @dataclass(frozen=True, slots=True)
 class EquilibriumResult:
     """The stable equilibrium phase assemblage at one (P, T, bulk) point.
@@ -493,7 +547,13 @@ class EquilibriumResult:
         database: Database acronym used for this computation (e.g. `"ig"`).
         bulk_res_norm: Mass-balance residual norm at convergence.
         n_iterations: Number of minimization (PGE/LP) iterations used.
-        status: Convergence status code (`0` = success).
+        status: Convergence status code. `0`: converged. `1`-`4`: stopped at
+            the iteration limit with an increasingly large residual (chemical
+            potential norm < 1e-2, < 0.1, < 1, < 10) -- usable with caution. `-1`:
+            failed (mass-balance residual above 1e-3, or a non-negative chemical
+            potential), typically from an infeasible bulk composition (e.g. more
+            `O` than its Fe can take up as Fe2O3 with no buffer); every phase
+            field (`ph`, fractions, compositions) is then meaningless.
         n_ox: Number of oxide/system components.
         oxides: Oxide component names, in `bulk`/`bulk_wt` order.
         elements: Element names corresponding to `oxides`.
@@ -572,7 +632,12 @@ class EquilibriumResult:
         n_mss: Number of metastable solution (pseudocompound) entries.
         ph: Stable phase names, length `n_ph`. With an active `buffer`, includes
             the buffer itself (e.g. `"qfm"`, `"aH2O"`) as a near-zero-fraction
-            pure phase.
+            pure phase. A name can legitimately repeat: two coexisting
+            compositions of one solution model (immiscibility) that solvus naming
+            does not tell apart, e.g. ordered and disordered `"ilm"` in `"mp"`. In
+            a failed result (`status == -1`), repeats are artifacts. With
+            `MAGEMin(mu_fix=...)`, includes the fictive `"m<oxide>"` phase of
+            each fixed oxide whose target holds, with zero fraction.
         sol_name: Underlying solution-model name for each phase in `ph`,
             length `n_ph`.
         ph_frac: Phase fractions (summing to 1), mol basis, length `n_ph`.
@@ -692,6 +757,7 @@ class EquilibriumResult:
         light: bool = False,
         name_solvus: bool = True,
         final_newton_system: FinalNewtonSystem | None = None,
+        mu_fix_phases: tuple[str, ...] = (),
     ) -> EquilibriumResult:
         """Deep-copy a ``stb_system`` struct (and its nested phase arrays).
 
@@ -710,6 +776,9 @@ class EquilibriumResult:
                 `solution_phases` being populated.
             final_newton_system: Already-copied final Newton system to attach,
                 if any.
+            mu_fix_phases: Names of the fictive `"m<oxide>"` pure phases of a
+                `MAGEMin(mu_fix=...)` handle. MAGEMin leaves their reported
+                compositions uninitialized, so they are replaced here.
         """
         n_ox, n_ph = c.nOx, c.n_ph
         n_pp, n_ss, n_mss = c.n_PP, c.n_SS, c.n_mSS
@@ -726,6 +795,15 @@ class EquilibriumResult:
 
         database = _c_str(c.database)
         ph = _c_str_array(c.ph, n_ph)
+        if pure_phases and mu_fix_phases:
+            pure_phases = _clean_mu_fix_phases(
+                pure_phases,
+                ph,
+                _c_int_array(c.ph_type, n_ph),
+                _c_int_array(c.ph_id, n_ph),
+                _c_str_array(c.oxides, n_ox),
+                mu_fix_phases,
+            )
         if name_solvus:
             ph_type_raw = _c_int_array(c.ph_type, n_ph)
             ph_id_raw = _c_int_array(c.ph_id, n_ph)
